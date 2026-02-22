@@ -22,7 +22,7 @@ services:
       - ./hall-of-fame:/app/hall-of-fame   # persisted best results
       - ./results:/app/results             # current batch results
       - ./logs:/app/logs                   # batch logs
-      - ./references:/app/references       # Mona Lisa reference images
+      - ./lisa-reference:/app/lisa-reference # Mona Lisa reference images
     deploy:
       resources:
         limits:

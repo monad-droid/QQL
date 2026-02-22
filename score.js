@@ -24,7 +24,7 @@ const { initCLIP, scoreCLIP } = require("./clip-score");
 // Mona Lisa tones: dark values, warm browns/ambers, muted greens.
 // Heuristic is lightweight — CLIP does the real work (threshold = 0).
 
-const REFERENCES_DIR = path.join(__dirname, "references");
+const REFERENCES_DIR = path.join(__dirname, "lisa-reference");
 
 function parseArgs(args) {
   let [rendersDir, topN] = args;

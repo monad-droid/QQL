@@ -28,10 +28,10 @@ RUN git clone https://github.com/qql-art/qql-headless.git \
 COPY generate.js score.js clip-score.js run.sh run-loop.sh download-references.sh ./
 
 # Create directories (references may be empty but must exist for COPY)
-RUN mkdir -p renders results references hall-of-fame logs
+RUN mkdir -p renders results lisa-reference hall-of-fame logs
 
 # Copy reference images for CLIP comparison (if any exist)
-COPY references/ ./references/
+COPY lisa-reference/ ./lisa-reference/
 
 RUN chmod +x run.sh run-loop.sh download-references.sh
 
