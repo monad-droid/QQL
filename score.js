@@ -1,19 +1,25 @@
 const fs = require("fs");
 const path = require("path");
 const { createCanvas, loadImage } = require("canvas");
+const { initCLIP, scoreCLIP } = require("./clip-score");
 
 // =============================================================================
 // QQL Pepe Scorer
 //
 // Two-pass scoring system:
-//   Pass 1 (Heuristic - all images, free & fast):
+//   Pass 1 (Heuristic - all images, fast pre-filter):
 //     1. Green dominance (0-30) - How much of the image is green (Pepe's face)
 //     2. Eye detection   (0-30) - Light/white regions in both sides of upper half
 //     3. Mouth detection (0-20) - Warm/dark tones in the lower portion
+//     Threshold: images scoring >= 20 advance to Pass 2.
 //
-//   Pass 2 (SSIM reference comparison - top candidates only):
-//     Compares against reference Pepe images in ./references/
-//     Takes the best match score across all references.
+//   Pass 2 (CLIP semantic comparison - candidates only):
+//     Uses OpenAI CLIP model to compute semantic similarity to "Pepe the frog"
+//     and reference images. This is the real judge — it understands what Pepe
+//     looks like, not just green pixels and round blobs.
+//     Score: 0-100 points.
+//
+//   Final ranking: CLIP score (primary), heuristic (tiebreaker).
 //
 // Usage: node score.js <renders-dir> [top-n]
 // Output: Ranked list of best candidates + copies top-N to results/
@@ -301,96 +307,9 @@ async function scoreImage(imagePath) {
 }
 
 // =============================================================================
-// SSIM Reference Comparison (Pass 2)
-// Compares a candidate image against all reference Pepe images and returns
-// the best match. Uses a simplified SSIM on downscaled grayscale images.
+// CLIP initialization helper
 // =============================================================================
-
-function getPixelData(canvas, ctx, img, targetSize) {
-  const tmpCanvas = createCanvas(targetSize, targetSize);
-  const tmpCtx = tmpCanvas.getContext("2d");
-  tmpCtx.drawImage(img, 0, 0, targetSize, targetSize);
-  return tmpCtx.getImageData(0, 0, targetSize, targetSize).data;
-}
-
-function computeSSIM(data1, data2, w, h) {
-  // Convert to grayscale luminance arrays
-  const lum1 = [];
-  const lum2 = [];
-  for (let i = 0; i < w * h; i++) {
-    const idx = i * 4;
-    lum1.push(0.299 * data1[idx] + 0.587 * data1[idx + 1] + 0.114 * data1[idx + 2]);
-    lum2.push(0.299 * data2[idx] + 0.587 * data2[idx + 1] + 0.114 * data2[idx + 2]);
-  }
-
-  const n = lum1.length;
-  const mean1 = lum1.reduce((a, b) => a + b, 0) / n;
-  const mean2 = lum2.reduce((a, b) => a + b, 0) / n;
-
-  let var1 = 0, var2 = 0, covar = 0;
-  for (let i = 0; i < n; i++) {
-    const d1 = lum1[i] - mean1;
-    const d2 = lum2[i] - mean2;
-    var1 += d1 * d1;
-    var2 += d2 * d2;
-    covar += d1 * d2;
-  }
-  var1 /= n;
-  var2 /= n;
-  covar /= n;
-
-  const C1 = (0.01 * 255) ** 2;
-  const C2 = (0.03 * 255) ** 2;
-
-  const ssim =
-    ((2 * mean1 * mean2 + C1) * (2 * covar + C2)) /
-    ((mean1 ** 2 + mean2 ** 2 + C1) * (var1 + var2 + C2));
-
-  return ssim;
-}
-
-async function loadReferenceImages() {
-  if (!fs.existsSync(REFERENCES_DIR)) return [];
-  const files = fs.readdirSync(REFERENCES_DIR).filter((f) =>
-    /\.(png|jpg|jpeg|webp)$/i.test(f)
-  );
-  const refs = [];
-  for (const f of files) {
-    const img = await loadImage(path.join(REFERENCES_DIR, f));
-    refs.push({ name: f, img });
-  }
-  return refs;
-}
-
-async function scoreSSIM(imagePath, referenceImages, targetSize = 128) {
-  if (referenceImages.length === 0) return { ssimScore: 0, bestMatch: "none" };
-
-  const candidateImg = await loadImage(imagePath);
-  const candidateCanvas = createCanvas(targetSize, targetSize);
-  const candidateCtx = candidateCanvas.getContext("2d");
-  candidateCtx.drawImage(candidateImg, 0, 0, targetSize, targetSize);
-  const candidateData = candidateCtx.getImageData(0, 0, targetSize, targetSize).data;
-
-  let bestSSIM = -1;
-  let bestMatch = "";
-  for (const ref of referenceImages) {
-    const refCanvas = createCanvas(targetSize, targetSize);
-    const refCtx = refCanvas.getContext("2d");
-    refCtx.drawImage(ref.img, 0, 0, targetSize, targetSize);
-    const refData = refCtx.getImageData(0, 0, targetSize, targetSize).data;
-
-    const ssim = computeSSIM(candidateData, refData, targetSize, targetSize);
-    if (ssim > bestSSIM) {
-      bestSSIM = ssim;
-      bestMatch = ref.name;
-    }
-  }
-
-  // Normalize SSIM to a 0-20 point bonus score
-  // SSIM ranges from -1 to 1, but typically 0 to 1 for similar images
-  const ssimScore = Math.round(Math.max(0, bestSSIM) * 20 * 100) / 100;
-  return { ssimScore, bestSSIM: Math.round(bestSSIM * 1000) / 1000, bestMatch };
-}
+const HEURISTIC_THRESHOLD = 20; // minimum heuristic score to advance to CLIP
 
 async function main(args) {
   const { rendersDir, topN } = parseArgs(args);
@@ -405,20 +324,10 @@ async function main(args) {
     process.exit(1);
   }
 
-  // Load reference images for Pass 2
-  const referenceImages = await loadReferenceImages();
-  const hasRefs = referenceImages.length > 0;
-  if (hasRefs) {
-    console.log(`Loaded ${referenceImages.length} reference image(s): ${referenceImages.map((r) => r.name).join(", ")}`);
-  } else {
-    console.log("No reference images found in ./references/ — running heuristic scoring only.");
-    console.log("Add Pepe PNGs to ./references/ for SSIM comparison pass.\n");
-  }
-
   console.log(`=== QQL Pepe Scorer ===`);
   console.log(`Scoring ${files.length} images from ${rendersDir}\n`);
 
-  // Pass 1: Heuristic scoring (all images)
+  // Pass 1: Heuristic scoring (all images) — fast pre-filter
   const scores = [];
   for (let i = 0; i < files.length; i++) {
     const filePath = path.join(rendersDir, files[i]);
@@ -435,47 +344,90 @@ async function main(args) {
   // Sort by heuristic score
   scores.sort((a, b) => b.totalScore - a.totalScore);
 
-  // Pass 2: SSIM against references (top candidates only)
-  if (hasRefs) {
-    const ssimCandidates = Math.min(topN * 3, scores.length);
-    console.log(`Pass 2 (SSIM vs ${referenceImages.length} refs): top ${ssimCandidates} candidates...`);
-    for (let i = 0; i < ssimCandidates; i++) {
-      process.stdout.write(`\r  Comparing ${i + 1}/${ssimCandidates}...`);
-      const ssimResult = await scoreSSIM(scores[i].path, referenceImages);
-      scores[i].ssimScore = ssimResult.ssimScore;
-      scores[i].bestSSIM = ssimResult.bestSSIM;
-      scores[i].bestMatch = ssimResult.bestMatch;
-      scores[i].combinedScore =
-        Math.round((scores[i].totalScore + ssimResult.ssimScore) * 100) / 100;
-    }
-    console.log(" Done.\n");
+  // Filter candidates for Pass 2 — only images that pass heuristic threshold
+  const clipCandidates = scores.filter((s) => s.totalScore >= HEURISTIC_THRESHOLD);
+  const clipCount = clipCandidates.length;
 
-    // Re-sort by combined score
-    scores.sort((a, b) => (b.combinedScore || b.totalScore) - (a.combinedScore || a.totalScore));
+  let clipAvailable = false;
+  if (clipCount === 0) {
+    console.log(`No images scored >= ${HEURISTIC_THRESHOLD} in heuristics. Skipping CLIP pass.`);
+    console.log(`Best heuristic score: ${scores[0]?.totalScore || 0}\n`);
+  } else {
+    // Pass 2: CLIP semantic scoring — the real judge
+    console.log(`Pass 2 (CLIP): ${clipCount}/${files.length} images passed heuristic threshold (>= ${HEURISTIC_THRESHOLD})`);
+    console.log("  Initializing CLIP model...");
+    try {
+      await initCLIP();
+      clipAvailable = true;
+    } catch (err) {
+      console.error(`\n  CLIP model unavailable: ${err.message}`);
+      console.log("  Falling back to heuristic-only scoring.");
+      console.log("  To enable CLIP: ensure internet access on first run to download the model (~350MB).\n");
+    }
+
+    if (clipAvailable) {
+      for (let i = 0; i < clipCount; i++) {
+        const s = clipCandidates[i];
+        process.stdout.write(`\r  CLIP scoring: ${i + 1}/${clipCount}...`);
+        try {
+          const clip = await scoreCLIP(s.path);
+          s.clipScore = clip.clipScore;
+          s.clipTextSim = clip.textSim;
+          s.clipRefSim = clip.refSim;
+          s.clipRawSim = clip.rawSim;
+          s.bestTextPrompt = clip.bestTextPrompt;
+          s.bestRefImage = clip.bestRefImage;
+        } catch (err) {
+          console.error(`\n  CLIP error on ${s.file}: ${err.message}`);
+          s.clipScore = 0;
+        }
+      }
+      console.log(" Done.\n");
+
+      // Final ranking: CLIP score is primary, heuristic is tiebreaker
+      // Images that didn't reach CLIP get sorted below all CLIP-scored images
+      for (const s of scores) {
+        if (s.clipScore != null) {
+          // CLIP-scored: use CLIP as primary (0-100), heuristic as decimal tiebreaker
+          s.finalScore = Math.round((s.clipScore + s.totalScore / 100) * 100) / 100;
+        } else {
+          // Didn't pass heuristic: rank by heuristic alone, below all CLIP images
+          s.finalScore = Math.round(s.totalScore * 100) / 100 * -1;
+        }
+      }
+    }
   }
 
+  // Sort by final score (CLIP-scored images on top)
+  scores.sort((a, b) => (b.finalScore ?? b.totalScore) - (a.finalScore ?? a.totalScore));
+
   // Print top results
-  const scoreKey = hasRefs ? "Combined" : "Score";
+  const hasClip = clipAvailable && clipCount > 0;
   console.log(`Top ${Math.min(topN, scores.length)} results:`);
-  console.log("─".repeat(90));
-  if (hasRefs) {
+  console.log("─".repeat(100));
+  if (hasClip) {
     console.log(
-      "Rank  Combined  Heuristic  SSIM    Green   Eyes    Mouth   File"
+      "Rank  CLIP     Heuristic  TextSim  RefSim   Green   Eyes    Mouth   File"
     );
   } else {
     console.log(
       "Rank  Score   Green   Eyes    Mouth   Blobs  GreenRatio  File"
     );
   }
-  console.log("─".repeat(90));
+  console.log("─".repeat(100));
   for (let i = 0; i < Math.min(topN, scores.length); i++) {
     const s = scores[i];
-    if (hasRefs) {
+    if (hasClip) {
       console.log(
-        `#${String(i + 1).padStart(3)}  ${String(s.combinedScore || 0).padStart(8)}  ` +
-          `${String(s.totalScore).padStart(9)}  ${String(s.ssimScore || 0).padStart(5)}  ` +
-          `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
-          `${String(s.mouthScore).padStart(6)}  ${s.file.slice(0, 30)}`
+        `#${String(i + 1).padStart(3)}  ` +
+          `${String(s.clipScore ?? "-").padStart(7)}  ` +
+          `${String(s.totalScore).padStart(9)}  ` +
+          `${String(s.clipTextSim ?? "-").padStart(7)}  ` +
+          `${String(s.clipRefSim ?? "-").padStart(6)}  ` +
+          `${String(s.greenScore).padStart(6)}  ` +
+          `${String(s.eyeScore).padStart(6)}  ` +
+          `${String(s.mouthScore).padStart(6)}   ` +
+          `${s.file.slice(0, 28)}`
       );
     } else {
       console.log(
@@ -487,7 +439,7 @@ async function main(args) {
       );
     }
   }
-  console.log("─".repeat(90));
+  console.log("─".repeat(100));
 
   // Copy top-N to results directory
   const resultsDir = path.join(path.dirname(rendersDir), "results");
@@ -496,8 +448,8 @@ async function main(args) {
   }
   for (let i = 0; i < Math.min(topN, scores.length); i++) {
     const s = scores[i];
-    const finalScore = s.combinedScore || s.totalScore;
-    const destName = `rank-${String(i + 1).padStart(3, "0")}-score-${finalScore}-${s.file}`;
+    const displayScore = s.clipScore ?? s.totalScore;
+    const destName = `rank-${String(i + 1).padStart(3, "0")}-clip-${displayScore}-heur-${s.totalScore}-${s.file}`;
     fs.copyFileSync(s.path, path.join(resultsDir, destName));
   }
   console.log(`\nTop ${Math.min(topN, scores.length)} copied to ${resultsDir}/`);

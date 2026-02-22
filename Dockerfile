@@ -24,14 +24,23 @@ RUN git clone https://github.com/qql-art/qql-headless.git \
   && cd qql-headless && npm install
 
 # Copy application code
-COPY generate.js score.js run.sh ./
+COPY generate.js score.js clip-score.js run.sh ./
 
-# Optional: copy reference images for SSIM scoring
-# COPY references/ ./references/
+# Create directories (references may be empty but must exist for COPY)
+RUN mkdir -p renders results references
+
+# Copy reference images for CLIP comparison (if any exist)
+COPY references/ ./references/
 
 RUN chmod +x run.sh
 
-# Output directories
-RUN mkdir -p renders results
+# Pre-download CLIP model so first run doesn't wait for download
+RUN node -e "import('@huggingface/transformers').then(t => \
+  Promise.all([ \
+    t.AutoTokenizer.from_pretrained('Xenova/clip-vit-base-patch32'), \
+    t.AutoProcessor.from_pretrained('Xenova/clip-vit-base-patch32'), \
+    t.CLIPTextModelWithProjection.from_pretrained('Xenova/clip-vit-base-patch32'), \
+    t.CLIPVisionModelWithProjection.from_pretrained('Xenova/clip-vit-base-patch32'), \
+  ]).then(() => console.log('CLIP model cached.')))"
 
 ENTRYPOINT ["./run.sh"]

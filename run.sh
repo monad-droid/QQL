@@ -12,9 +12,10 @@ RENDERS_DIR="renders"
 RESULTS_DIR="results"
 
 echo "============================================"
-echo "  QQL Pepe Hunter"
+echo "  QQL Pepe Hunter (CLIP-powered)"
 echo "  Generating: $COUNT images"
 echo "  Keeping top: $TOP_N results"
+echo "  Scoring: Heuristic pre-filter → CLIP"
 echo "============================================"
 echo ""
 
@@ -30,7 +31,7 @@ echo ""
 echo "Generation complete in $((GEN_END - START))s"
 echo ""
 
-# Step 2: Score
+# Step 2: Score (heuristic pre-filter + CLIP semantic scoring)
 echo ">>> Step 2/2: Scoring and ranking..."
 node score.js "$RENDERS_DIR" "$TOP_N"
 SCORE_END=$(date +%s)
