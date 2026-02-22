@@ -1,0 +1,9 @@
+node_modules/
+qql-headless/
+qqlrs/
+renders/
+results/
+test-renders/
+scores/
+.git/
+*.tar.gz
