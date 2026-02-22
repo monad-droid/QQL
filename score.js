@@ -5,11 +5,17 @@ const { createCanvas, loadImage } = require("canvas");
 // =============================================================================
 // QQL Pepe Scorer
 //
-// Scores generated QQL images for Pepe-likeness using multiple heuristics:
-//   1. Green dominance - How much of the image is green (Pepe's face)
-//   2. Eye detection  - Presence of two light/white circular regions in upper half
-//   3. Symmetry       - Bilateral symmetry (Pepe's face is roughly symmetric)
-//   4. Dark center    - Dark regions inside light regions (pupils)
+// Two-pass scoring system:
+//   Pass 1 (Heuristic - all images, free & fast):
+//     1. Green dominance - How much of the image is green (Pepe's face)
+//     2. Eye detection   - Two light/white circular regions in upper half
+//     3. Symmetry        - Bilateral symmetry (Pepe's face is symmetric)
+//     4. Dark centers    - Dark regions inside light regions (pupils)
+//     5. Mouth detection - Brown/warm tones in the lower third
+//
+//   Pass 2 (SSIM reference comparison - top candidates only):
+//     Compares against reference Pepe images in ./references/
+//     Takes the best match score across all references.
 //
 // Usage: node score.js <renders-dir> [top-n]
 // Output: Ranked list of best candidates + copies top-N to results/
@@ -22,6 +28,8 @@ const PEPE_GREEN_HUE_MAX = 200;
 const PEPE_GREEN_SAT_MIN = 15;
 const PEPE_GREEN_BRIGHT_MAX = 85;
 const PEPE_GREEN_BRIGHT_MIN = 10; // Edinburgh greens go as low as bright 20
+
+const REFERENCES_DIR = path.join(__dirname, "references");
 
 function parseArgs(args) {
   let [rendersDir, topN] = args;
@@ -71,6 +79,11 @@ function isDark(h, s, b) {
   return b <= 30;
 }
 
+// Pepe mouth: warm/brown tones (hue 10-45, moderate sat, moderate bright)
+function isMouthColor(h, s, b) {
+  return h >= 5 && h <= 50 && s >= 25 && b >= 30 && b <= 90;
+}
+
 async function scoreImage(imagePath) {
   const img = await loadImage(imagePath);
   const w = img.width;
@@ -87,13 +100,16 @@ async function scoreImage(imagePath) {
   let darkPixelsTop = 0;
   let lightPixelsBottom = 0;
 
-  // Split image into quadrants for spatial analysis
+  // Split image into regions
   const midY = Math.floor(h / 2);
   const midX = Math.floor(w / 2);
+  const lowerThirdY = Math.floor(h * 2 / 3);
 
   let greenTop = 0, greenBottom = 0;
   let lightTopLeft = 0, lightTopRight = 0;
   let darkTopLeft = 0, darkTopRight = 0;
+  let mouthPixels = 0;
+  let mouthLeft = 0, mouthRight = 0;
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -123,40 +139,43 @@ async function scoreImage(imagePath) {
       } else {
         if (isLight(hsb.h, hsb.s, hsb.b)) lightPixelsBottom++;
       }
+
+      // Mouth region: lower third of image
+      if (y >= lowerThirdY && isMouthColor(hsb.h, hsb.s, hsb.b)) {
+        mouthPixels++;
+        if (x < midX) mouthLeft++;
+        else mouthRight++;
+      }
     }
   }
 
   const topPixels = midY * w;
   const quadPixels = midY * midX;
+  const lowerThirdPixels = (h - lowerThirdY) * w;
 
-  // Score 1: Green dominance (0-30 points)
-  // Pepe is mostly green. Want 30-70% green overall.
+  // Score 1: Green dominance (0-25 points)
   const greenRatio = greenPixels / totalPixels;
   let greenScore = 0;
   if (greenRatio >= 0.3 && greenRatio <= 0.7) {
-    greenScore = 30 * (1 - Math.abs(greenRatio - 0.5) / 0.2);
+    greenScore = 25 * (1 - Math.abs(greenRatio - 0.5) / 0.2);
   } else if (greenRatio >= 0.15 && greenRatio < 0.3) {
-    greenScore = 15 * (greenRatio / 0.3);
+    greenScore = 12.5 * (greenRatio / 0.3);
   }
 
-  // Score 2: Eye regions - light spots in upper half (0-30 points)
-  // Want two distinct light regions in upper-left and upper-right
+  // Score 2: Eye regions - light spots in upper half (0-25 points)
   const lightTopRatio = lightPixelsTop / topPixels;
   const lightTopLeftRatio = lightTopLeft / quadPixels;
   const lightTopRightRatio = lightTopRight / quadPixels;
 
   let eyeScore = 0;
-  // Both sides should have light regions (eyes)
   const minEyeRatio = Math.min(lightTopLeftRatio, lightTopRightRatio);
   const maxEyeRatio = Math.max(lightTopLeftRatio, lightTopRightRatio);
   if (minEyeRatio > 0.03 && maxEyeRatio < 0.5) {
-    // Symmetry bonus: both eyes similar size
     const eyeSymmetry = minEyeRatio / (maxEyeRatio || 0.001);
-    eyeScore = 20 * Math.min(minEyeRatio / 0.1, 1.0) + 10 * eyeSymmetry;
+    eyeScore = 15 * Math.min(minEyeRatio / 0.1, 1.0) + 10 * eyeSymmetry;
   }
 
   // Score 3: Dark pupils in upper half (0-20 points)
-  // Want some dark spots inside the light regions (pupils)
   const darkTopRatio = darkPixelsTop / topPixels;
   let pupilScore = 0;
   if (darkTopRatio > 0.01 && darkTopRatio < 0.2) {
@@ -168,10 +187,9 @@ async function scoreImage(imagePath) {
     pupilScore = 12 * Math.min(darkTopRatio / 0.05, 1.0) + 8 * darkSymmetry;
   }
 
-  // Score 4: Bilateral symmetry (0-20 points)
-  // Compare left half vs mirrored right half
+  // Score 4: Bilateral symmetry (0-15 points)
   let symmetryDiff = 0;
-  const sampleStep = 4; // sample every 4th pixel for speed
+  const sampleStep = 4;
   let sampleCount = 0;
   for (let y = 0; y < h; y += sampleStep) {
     for (let x = 0; x < midX; x += sampleStep) {
@@ -186,10 +204,18 @@ async function scoreImage(imagePath) {
     }
   }
   const avgSymmetryDiff = symmetryDiff / sampleCount;
-  const symmetryScore = 20 * Math.max(0, 1 - avgSymmetryDiff * 3);
+  const symmetryScore = 15 * Math.max(0, 1 - avgSymmetryDiff * 3);
 
-  // Total score
-  const totalScore = greenScore + eyeScore + pupilScore + symmetryScore;
+  // Score 5: Mouth region - brown/warm tones in lower third (0-15 points)
+  const mouthRatio = mouthPixels / lowerThirdPixels;
+  let mouthScore = 0;
+  if (mouthRatio > 0.05 && mouthRatio < 0.6) {
+    const mouthSymmetry =
+      Math.min(mouthLeft, mouthRight) / (Math.max(mouthLeft, mouthRight) || 1);
+    mouthScore = 10 * Math.min(mouthRatio / 0.15, 1.0) + 5 * mouthSymmetry;
+  }
+
+  const totalScore = greenScore + eyeScore + pupilScore + symmetryScore + mouthScore;
 
   return {
     totalScore: Math.round(totalScore * 100) / 100,
@@ -197,9 +223,103 @@ async function scoreImage(imagePath) {
     eyeScore: Math.round(eyeScore * 100) / 100,
     pupilScore: Math.round(pupilScore * 100) / 100,
     symmetryScore: Math.round(symmetryScore * 100) / 100,
+    mouthScore: Math.round(mouthScore * 100) / 100,
     greenRatio: Math.round(greenRatio * 1000) / 1000,
     lightTopRatio: Math.round(lightTopRatio * 1000) / 1000,
+    mouthRatio: Math.round(mouthRatio * 1000) / 1000,
   };
+}
+
+// =============================================================================
+// SSIM Reference Comparison (Pass 2)
+// Compares a candidate image against all reference Pepe images and returns
+// the best match. Uses a simplified SSIM on downscaled grayscale images.
+// =============================================================================
+
+function getPixelData(canvas, ctx, img, targetSize) {
+  const tmpCanvas = createCanvas(targetSize, targetSize);
+  const tmpCtx = tmpCanvas.getContext("2d");
+  tmpCtx.drawImage(img, 0, 0, targetSize, targetSize);
+  return tmpCtx.getImageData(0, 0, targetSize, targetSize).data;
+}
+
+function computeSSIM(data1, data2, w, h) {
+  // Convert to grayscale luminance arrays
+  const lum1 = [];
+  const lum2 = [];
+  for (let i = 0; i < w * h; i++) {
+    const idx = i * 4;
+    lum1.push(0.299 * data1[idx] + 0.587 * data1[idx + 1] + 0.114 * data1[idx + 2]);
+    lum2.push(0.299 * data2[idx] + 0.587 * data2[idx + 1] + 0.114 * data2[idx + 2]);
+  }
+
+  const n = lum1.length;
+  const mean1 = lum1.reduce((a, b) => a + b, 0) / n;
+  const mean2 = lum2.reduce((a, b) => a + b, 0) / n;
+
+  let var1 = 0, var2 = 0, covar = 0;
+  for (let i = 0; i < n; i++) {
+    const d1 = lum1[i] - mean1;
+    const d2 = lum2[i] - mean2;
+    var1 += d1 * d1;
+    var2 += d2 * d2;
+    covar += d1 * d2;
+  }
+  var1 /= n;
+  var2 /= n;
+  covar /= n;
+
+  const C1 = (0.01 * 255) ** 2;
+  const C2 = (0.03 * 255) ** 2;
+
+  const ssim =
+    ((2 * mean1 * mean2 + C1) * (2 * covar + C2)) /
+    ((mean1 ** 2 + mean2 ** 2 + C1) * (var1 + var2 + C2));
+
+  return ssim;
+}
+
+async function loadReferenceImages() {
+  if (!fs.existsSync(REFERENCES_DIR)) return [];
+  const files = fs.readdirSync(REFERENCES_DIR).filter((f) =>
+    /\.(png|jpg|jpeg|webp)$/i.test(f)
+  );
+  const refs = [];
+  for (const f of files) {
+    const img = await loadImage(path.join(REFERENCES_DIR, f));
+    refs.push({ name: f, img });
+  }
+  return refs;
+}
+
+async function scoreSSIM(imagePath, referenceImages, targetSize = 128) {
+  if (referenceImages.length === 0) return { ssimScore: 0, bestMatch: "none" };
+
+  const candidateImg = await loadImage(imagePath);
+  const candidateCanvas = createCanvas(targetSize, targetSize);
+  const candidateCtx = candidateCanvas.getContext("2d");
+  candidateCtx.drawImage(candidateImg, 0, 0, targetSize, targetSize);
+  const candidateData = candidateCtx.getImageData(0, 0, targetSize, targetSize).data;
+
+  let bestSSIM = -1;
+  let bestMatch = "";
+  for (const ref of referenceImages) {
+    const refCanvas = createCanvas(targetSize, targetSize);
+    const refCtx = refCanvas.getContext("2d");
+    refCtx.drawImage(ref.img, 0, 0, targetSize, targetSize);
+    const refData = refCtx.getImageData(0, 0, targetSize, targetSize).data;
+
+    const ssim = computeSSIM(candidateData, refData, targetSize, targetSize);
+    if (ssim > bestSSIM) {
+      bestSSIM = ssim;
+      bestMatch = ref.name;
+    }
+  }
+
+  // Normalize SSIM to a 0-20 point bonus score
+  // SSIM ranges from -1 to 1, but typically 0 to 1 for similar images
+  const ssimScore = Math.round(Math.max(0, bestSSIM) * 20 * 100) / 100;
+  return { ssimScore, bestSSIM: Math.round(bestSSIM * 1000) / 1000, bestMatch };
 }
 
 async function main(args) {
@@ -215,13 +335,24 @@ async function main(args) {
     process.exit(1);
   }
 
-  console.log(`\n=== QQL Pepe Scorer ===`);
+  // Load reference images for Pass 2
+  const referenceImages = await loadReferenceImages();
+  const hasRefs = referenceImages.length > 0;
+  if (hasRefs) {
+    console.log(`Loaded ${referenceImages.length} reference image(s): ${referenceImages.map((r) => r.name).join(", ")}`);
+  } else {
+    console.log("No reference images found in ./references/ — running heuristic scoring only.");
+    console.log("Add Pepe PNGs to ./references/ for SSIM comparison pass.\n");
+  }
+
+  console.log(`=== QQL Pepe Scorer ===`);
   console.log(`Scoring ${files.length} images from ${rendersDir}\n`);
 
+  // Pass 1: Heuristic scoring (all images)
   const scores = [];
   for (let i = 0; i < files.length; i++) {
     const filePath = path.join(rendersDir, files[i]);
-    process.stdout.write(`\rScoring ${i + 1}/${files.length}...`);
+    process.stdout.write(`\rPass 1 (heuristics): ${i + 1}/${files.length}...`);
     try {
       const score = await scoreImage(filePath);
       scores.push({ file: files[i], path: filePath, ...score });
@@ -229,28 +360,65 @@ async function main(args) {
       console.error(`\nError scoring ${files[i]}: ${err.message}`);
     }
   }
-  console.log("\n");
+  console.log(" Done.\n");
 
-  // Sort by total score descending
+  // Sort by heuristic score
   scores.sort((a, b) => b.totalScore - a.totalScore);
 
+  // Pass 2: SSIM against references (top candidates only)
+  if (hasRefs) {
+    const ssimCandidates = Math.min(topN * 3, scores.length);
+    console.log(`Pass 2 (SSIM vs ${referenceImages.length} refs): top ${ssimCandidates} candidates...`);
+    for (let i = 0; i < ssimCandidates; i++) {
+      process.stdout.write(`\r  Comparing ${i + 1}/${ssimCandidates}...`);
+      const ssimResult = await scoreSSIM(scores[i].path, referenceImages);
+      scores[i].ssimScore = ssimResult.ssimScore;
+      scores[i].bestSSIM = ssimResult.bestSSIM;
+      scores[i].bestMatch = ssimResult.bestMatch;
+      scores[i].combinedScore =
+        Math.round((scores[i].totalScore + ssimResult.ssimScore) * 100) / 100;
+    }
+    console.log(" Done.\n");
+
+    // Re-sort by combined score
+    scores.sort((a, b) => (b.combinedScore || b.totalScore) - (a.combinedScore || a.totalScore));
+  }
+
   // Print top results
+  const scoreKey = hasRefs ? "Combined" : "Score";
   console.log(`Top ${Math.min(topN, scores.length)} results:`);
-  console.log("─".repeat(100));
-  console.log(
-    "Rank  Score   Green   Eyes    Pupils  Symmetry  GreenRatio  File"
-  );
-  console.log("─".repeat(100));
-  for (let i = 0; i < Math.min(topN, scores.length); i++) {
-    const s = scores[i];
+  console.log("─".repeat(110));
+  if (hasRefs) {
     console.log(
-      `#${String(i + 1).padStart(3)}  ${String(s.totalScore).padStart(6)}  ` +
-        `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
-        `${String(s.pupilScore).padStart(6)}  ${String(s.symmetryScore).padStart(8)}  ` +
-        `${String(s.greenRatio).padStart(10)}  ${s.file.slice(0, 40)}`
+      "Rank  Combined  Heuristic  SSIM    Green   Eyes    Pupils  Symmetry  Mouth   File"
+    );
+  } else {
+    console.log(
+      "Rank  Score   Green   Eyes    Pupils  Symmetry  Mouth   GreenRatio  File"
     );
   }
-  console.log("─".repeat(100));
+  console.log("─".repeat(110));
+  for (let i = 0; i < Math.min(topN, scores.length); i++) {
+    const s = scores[i];
+    if (hasRefs) {
+      console.log(
+        `#${String(i + 1).padStart(3)}  ${String(s.combinedScore || 0).padStart(8)}  ` +
+          `${String(s.totalScore).padStart(9)}  ${String(s.ssimScore || 0).padStart(5)}  ` +
+          `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
+          `${String(s.pupilScore).padStart(6)}  ${String(s.symmetryScore).padStart(8)}  ` +
+          `${String(s.mouthScore).padStart(6)}  ${s.file.slice(0, 30)}`
+      );
+    } else {
+      console.log(
+        `#${String(i + 1).padStart(3)}  ${String(s.totalScore).padStart(6)}  ` +
+          `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
+          `${String(s.pupilScore).padStart(6)}  ${String(s.symmetryScore).padStart(8)}  ` +
+          `${String(s.mouthScore).padStart(6)}  ` +
+          `${String(s.greenRatio).padStart(10)}  ${s.file.slice(0, 30)}`
+      );
+    }
+  }
+  console.log("─".repeat(110));
 
   // Copy top-N to results directory
   const resultsDir = path.join(path.dirname(rendersDir), "results");
@@ -259,7 +427,8 @@ async function main(args) {
   }
   for (let i = 0; i < Math.min(topN, scores.length); i++) {
     const s = scores[i];
-    const destName = `rank-${String(i + 1).padStart(3, "0")}-score-${s.totalScore}-${s.file}`;
+    const finalScore = s.combinedScore || s.totalScore;
+    const destName = `rank-${String(i + 1).padStart(3, "0")}-score-${finalScore}-${s.file}`;
     fs.copyFileSync(s.path, path.join(resultsDir, destName));
   }
   console.log(`\nTop ${Math.min(topN, scores.length)} copied to ${resultsDir}/`);
