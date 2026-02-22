@@ -1,5 +1,5 @@
 #!/bin/bash
-# QQL Mona Lisa Hunter - Cloud Deploy Helper
+# QQL Pepe Hunter - Cloud Deploy Helper
 #
 # SINGLE BATCH (one-shot):
 #   ./deploy.sh local 1000            Run locally via Docker
@@ -97,7 +97,7 @@ run_daemon_remote() {
 
   # Upload source files to build on the server (no local Docker needed)
   echo ">>> Uploading project files to server..."
-  ssh "$server" "mkdir -p ~/qql-hunter/{hall-of-fame,results,logs,lisa-reference}"
+  ssh "$server" "mkdir -p ~/qql-hunter/{hall-of-fame,results,logs,references}"
   scp Dockerfile docker-compose.yml run.sh run-loop.sh \
       generate.js score.js clip-score.js \
       download-references.sh \
@@ -105,16 +105,16 @@ run_daemon_remote() {
       "$server":~/qql-hunter/
 
   # Copy reference images if they exist locally
-  if ls lisa-reference/*.{png,jpg,jpeg,webp} 1>/dev/null 2>&1; then
+  if ls references/*.{png,jpg,jpeg,webp} 1>/dev/null 2>&1; then
     echo ">>> Uploading reference images..."
-    scp lisa-reference/*.{png,jpg,jpeg,webp} "$server":~/qql-hunter/lisa-reference/ 2>/dev/null || true
+    scp references/*.{png,jpg,jpeg,webp} "$server":~/qql-hunter/references/ 2>/dev/null || true
   fi
 
   # Download reference images on server if none exist
-  REMOTE_REFS=$(ssh "$server" "ls ~/qql-hunter/lisa-reference/*.{png,jpg,jpeg,webp} 2>/dev/null | wc -l")
+  REMOTE_REFS=$(ssh "$server" "ls ~/qql-hunter/references/*.{png,jpg,jpeg,webp} 2>/dev/null | wc -l")
   if [ "$REMOTE_REFS" -eq 0 ] 2>/dev/null; then
     echo ">>> No reference images found. Downloading on server..."
-    ssh "$server" "cd ~/qql-hunter && bash download-references.sh lisa-reference"
+    ssh "$server" "cd ~/qql-hunter && bash download-references.sh references"
   fi
 
   # Build and start on the server
@@ -244,7 +244,7 @@ case "$MODE" in
     build_image
     ;;
   *)
-    echo "QQL Mona Lisa Hunter - Cloud Deploy"
+    echo "QQL Pepe Hunter - Cloud Deploy"
     echo ""
     echo "SINGLE BATCH (one-shot):"
     echo "  ./deploy.sh local [count] [top-n]       Run locally via Docker"

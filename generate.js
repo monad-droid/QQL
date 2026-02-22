@@ -7,42 +7,45 @@ const traitsLib = require("./qql-headless/src/vendor/qql-traits.min.js");
 const random = require("./qql-headless/src/vendor/qql-safe-random.min.js");
 
 // =============================================================================
-// FIXED TRAITS - Optimized for Mona Lisa-like outputs
+// FIXED TRAITS - Optimized for Pepe-like outputs
 //
 // Strategy:
-//   - Palette: Randomly picks Berlin or Edinburgh each render.
-//       Berlin: dark, moody — bBlack, bCoolGrayDark, bCoolGrayMid, bWarm, bAccent.
-//         Rich darks and warm accents match the Mona Lisa's shadowy sfumato tones.
-//       Edinburgh: muted earth tones — eCream, eCoolDarkGreen, eMidGreen, eBrown.
-//         Browns and dark greens match the painting's landscape and skin tones.
-//   - Stacked color mode: Creates layered depth, good for portrait-like composition.
-//   - Low color variety: Keeps output tonally cohesive (no random neon).
-//   - Everything else RANDOM: Turbulence, flow field, structure, spacing, rings,
-//     margin, ring size — this is where the 1-in-a-million magic happens.
-//     CLIP will find the matches; we just need the right color family.
+//   - Edinburgh palette: Best match for Pepe's earthy/muted green. Contains:
+//       eCream (sat 4, bright 96) — near-white, perfect for eyes
+//       eCoolDarkGreen (hue 170, sat 52, bright 25) — Pepe face green
+//       eMidGreen (hue 150, sat 60, bright 35) — Pepe face green
+//       eGrayBlue (hue 200, sat 45, bright 40) — dark enough for pupils
+//       eBrown (hue 30, sat 35, bright 35) — mouth/lip tones
+//     Edinburgh has 5 backgrounds, including "Edinburgh Green" which makes
+//     the entire canvas green — Pepe's face base color.
+//   - Stacked color mode: Creates rings-within-rings = concentric circles that
+//     resemble eyes (white outer ring, dark inner ring).
+//   - Low color variety: Keeps output green-dominant, reduces random color noise.
+//   - No turbulence: Clean, round circles (not distorted/wobbly).
+//   - Bullseye rings on: Multiple concentric rings = more eye-like shapes.
+//   - Wild size variety: Need both large rings (eyes) and small rings (detail).
+//   - Thick rings: Visible, prominent shapes.
+//   - Wide margin: Pushes circles inward, creating a face-shaped boundary.
+//   - Everything else RANDOM: Flow field, structure, spacing, ring size
+//     are where the 1-in-a-million magic happens.
 // =============================================================================
-const PALETTES = ["Berlin", "Edinburgh"];
-
-function getFixedTraits() {
-  const palette = PALETTES[Math.floor(Math.random() * PALETTES.length)];
-  return {
-    colorPalette: palette,
-    colorMode: "Stacked",
-    colorVariety: "Low",
-    // Everything else random for maximum exploration:
-    turbulence: null,
-    bullseyeRings1: null,
-    bullseyeRings3: null,
-    bullseyeRings7: null,
-    ringThickness: null,
-    sizeVariety: null,
-    structure: null,
-    flowField: null,
-    margin: null,
-    ringSize: null,
-    spacing: null,
-  };
-}
+const FIXED_TRAITS = {
+  colorPalette: "Edinburgh",
+  colorMode: "Stacked",
+  colorVariety: "Low",
+  turbulence: "None",
+  bullseyeRings1: "On",
+  bullseyeRings3: "On",
+  bullseyeRings7: "On",
+  ringThickness: "Thick",
+  sizeVariety: "Wild",
+  // Left random for maximum exploration:
+  structure: null,
+  flowField: null,
+  margin: "Wide",
+  ringSize: null,
+  spacing: null,
+};
 
 // 400px is enough for CLIP scoring (which uses 224px internally).
 // Re-render winners at full resolution later.
@@ -54,10 +57,6 @@ function parseArgs(args) {
   let [outdir, count, startIndex, workerTag] = args;
   if (!outdir) {
     console.error("Usage: node generate.js <outdir> [count] [start-index] [worker-tag]");
-    console.error("  outdir:       directory to save PNGs");
-    console.error("  count:        number of images to generate (default: 100)");
-    console.error("  start-index:  starting index for filenames (default: 0)");
-    console.error("  worker-tag:   label for log output (default: none)");
     process.exit(1);
   }
   count = count ? parseInt(count) : 100;
@@ -93,7 +92,7 @@ function generateSeed(target) {
   const nibbles = target.slice(2);
   if (nibbles.length === 40) {
     const address = Buffer.from(nibbles, "hex");
-    return randomSeed(address, getFixedTraits());
+    return randomSeed(address, FIXED_TRAITS);
   }
   if (nibbles.length === 64) return target;
   throw new Error("expected address (40 hex) or seed (64 hex); got: " + target);

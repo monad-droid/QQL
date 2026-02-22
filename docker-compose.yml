@@ -1,4 +1,4 @@
-## QQL Mona Lisa Hunter - 24/7 Cloud Deployment
+## QQL Pepe Hunter - 24/7 Cloud Deployment
 ##
 ## Quick start:
 ##   docker compose up -d          # start hunting in background
@@ -9,8 +9,6 @@
 ##   ls hall-of-fame/              # all-time best images
 ##   cat hall-of-fame/_stats.json  # running stats
 ##   ls logs/                      # per-batch logs
-##
-## Note: Pepe results are preserved in hall-of-fame-pepe/ on the server
 
 services:
   hunter:
@@ -22,7 +20,7 @@ services:
       - ./hall-of-fame:/app/hall-of-fame   # persisted best results
       - ./results:/app/results             # current batch results
       - ./logs:/app/logs                   # batch logs
-      - ./lisa-reference:/app/lisa-reference # Mona Lisa reference images
+      - ./references:/app/references       # Pepe reference images
     deploy:
       resources:
         limits:

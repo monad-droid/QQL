@@ -15,7 +15,7 @@ const path = require("path");
 // =============================================================================
 
 const CLIP_MODEL = "Xenova/clip-vit-base-patch32";
-const REFERENCES_DIR = path.join(__dirname, "lisa-reference");
+const REFERENCES_DIR = path.join(__dirname, "references");
 
 let _visionModel = null;
 let _processor = null;

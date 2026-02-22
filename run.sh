@@ -1,5 +1,5 @@
 #!/bin/bash
-# QQL Mona Lisa Hunter - Full pipeline
+# QQL Pepe Hunter - Full pipeline
 # Usage: ./run.sh [count] [top-n]
 #   count: number of images to generate (default: 500)
 #   top-n: number of top results to keep (default: 20)
@@ -14,7 +14,7 @@ CHUNK=5
 WORKERS=2
 
 echo "============================================"
-echo "  QQL Mona Lisa Hunter (CLIP-powered)"
+echo "  QQL Pepe Hunter (CLIP-powered)"
 echo "  Generating: $COUNT images ($WORKERS workers, chunks of $CHUNK)"
 echo "  Keeping top: $TOP_N results"
 echo "  Scoring: Heuristic pre-filter → CLIP"
