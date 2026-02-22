@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:20-slim
 
 # System dependencies for node-canvas
 RUN apt-get update && apt-get install -y --no-install-recommends \
