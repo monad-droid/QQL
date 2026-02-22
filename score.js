@@ -78,7 +78,7 @@ function isLight(h, s, b) {
 // Pepe mouth: warm/brown/red tones OR dark lines (black mouth outlines)
 function isMouthColor(h, s, b) {
   const isWarm = h >= 0 && h <= 60 && s >= 15 && b >= 15 && b <= 95;
-  const isDark = b <= 20;
+  const isDark = b <= 30;
   return isWarm || isDark;
 }
 
@@ -131,8 +131,8 @@ async function scoreImage(imagePath) {
         if (isLight(hsb.h, hsb.s, hsb.b)) lightPixelsBottom++;
       }
 
-      // Mouth region: lower third of image
-      if (y >= lowerThirdY && isMouthColor(hsb.h, hsb.s, hsb.b)) {
+      // Mouth region: lower half of image (Pepe mouths sit around 50-65% down)
+      if (y >= midY && isMouthColor(hsb.h, hsb.s, hsb.b)) {
         mouthPixels++;
         if (x < midX) mouthLeft++;
         else mouthRight++;
@@ -191,8 +191,9 @@ async function scoreImage(imagePath) {
   const avgSymmetryDiff = symmetryDiff / sampleCount;
   const symmetryScore = 15 * Math.max(0, 1 - avgSymmetryDiff * 2);
 
-  // Score 5: Mouth region - brown/warm tones in lower third (0-15 points)
-  const mouthRatio = mouthPixels / lowerThirdPixels;
+  // Score 5: Mouth region - warm tones or dark lines in lower half (0-15 points)
+  const lowerHalfPixels = (h - midY) * w;
+  const mouthRatio = mouthPixels / lowerHalfPixels;
   let mouthScore = 0;
   if (mouthRatio > 0.02 && mouthRatio < 0.6) {
     const mouthSymmetry =
