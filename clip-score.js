@@ -1,39 +1,51 @@
 const fs = require("fs");
 const path = require("path");
-const { createCanvas, loadImage } = require("canvas");
 
 // =============================================================================
-// CLIP Scoring Module
+// CLIP Scoring Module — Contrastive Zero-Shot Classification
 //
-// Uses OpenAI's CLIP model (via @huggingface/transformers ONNX runtime) to
-// compute semantic similarity between QQL renders and Pepe the Frog.
+// Uses CLIP to answer: "Is this Pepe the frog, or just abstract art?"
 //
-// Two scoring modes:
-//   1. Text similarity:  "Does this image look like Pepe the frog?"
-//   2. Image similarity: "Does this image match these reference Pepe images?"
+// Compares each image against POSITIVE prompts (frog, Pepe) and NEGATIVE
+// prompts (abstract art, circles, geometric patterns). Uses softmax to
+// compute a probability — how much more does this look like Pepe than
+// generic QQL art?
 //
-// Both produce cosine similarity scores in [0, 1].
+// This prevents false positives where CLIP matches visual style (circles,
+// color palette) rather than actual frog-likeness.
 // =============================================================================
 
 const CLIP_MODEL = "Xenova/clip-vit-base-patch32";
 
-const PEPE_TEXT_PROMPTS = [
-  "Pepe the frog meme face",
-  "green frog face with big round eyes",
-  "cartoon frog with two white eyes on green background",
+// Positive: what Pepe looks like
+const POSITIVE_PROMPTS = [
+  "Pepe the frog meme",
+  "green frog face with two big round white eyes",
+  "cartoon frog face",
+  "a green frog looking at the viewer",
+];
+
+// Negative: what QQL art typically looks like (NOT Pepe)
+const NEGATIVE_PROMPTS = [
+  "abstract geometric circles and rings",
+  "concentric circles pattern on colored background",
+  "generative art with dots and rings",
+  "abstract colorful circles artwork",
 ];
 
 const REFERENCES_DIR = path.join(__dirname, "references");
 
-let _pipeline = null;
+// Temperature for softmax — lower = more decisive, higher = more gradual
+const SOFTMAX_TEMPERATURE = 0.01;
+
 let _tokenizer = null;
 let _textModel = null;
 let _visionModel = null;
 let _processor = null;
-let _textEmbeddings = null;
+let _positiveEmbeddings = null;
+let _negativeEmbeddings = null;
 let _refEmbeddings = null;
 
-// Dynamically import ESM module
 async function getTransformers() {
   return await import("@huggingface/transformers");
 }
@@ -46,7 +58,6 @@ async function initCLIP() {
     CLIPVisionModelWithProjection,
     AutoTokenizer,
     AutoProcessor,
-    RawImage,
   } = await getTransformers();
 
   console.log("  Loading CLIP model (first run downloads ~350MB)...");
@@ -73,24 +84,30 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// Pre-compute text embeddings for Pepe prompts
-async function getTextEmbeddings() {
-  if (_textEmbeddings) return _textEmbeddings;
-
-  _textEmbeddings = [];
-  for (const prompt of PEPE_TEXT_PROMPTS) {
-    const inputs = await _tokenizer(prompt, {
-      padding: true,
-      truncation: true,
-    });
-    const output = await _textModel(inputs);
-    const embedding = Array.from(output.text_embeds.data);
-    _textEmbeddings.push({ prompt, embedding });
-  }
-  return _textEmbeddings;
+async function encodeText(text) {
+  const inputs = await _tokenizer(text, { padding: true, truncation: true });
+  const output = await _textModel(inputs);
+  return Array.from(output.text_embeds.data);
 }
 
-// Pre-compute image embeddings for reference Pepe images
+async function getPositiveEmbeddings() {
+  if (_positiveEmbeddings) return _positiveEmbeddings;
+  _positiveEmbeddings = [];
+  for (const prompt of POSITIVE_PROMPTS) {
+    _positiveEmbeddings.push({ prompt, embedding: await encodeText(prompt) });
+  }
+  return _positiveEmbeddings;
+}
+
+async function getNegativeEmbeddings() {
+  if (_negativeEmbeddings) return _negativeEmbeddings;
+  _negativeEmbeddings = [];
+  for (const prompt of NEGATIVE_PROMPTS) {
+    _negativeEmbeddings.push({ prompt, embedding: await encodeText(prompt) });
+  }
+  return _negativeEmbeddings;
+}
+
 async function getRefEmbeddings() {
   if (_refEmbeddings) return _refEmbeddings;
 
@@ -98,24 +115,20 @@ async function getRefEmbeddings() {
   if (!fs.existsSync(REFERENCES_DIR)) return _refEmbeddings;
 
   const { RawImage } = await getTransformers();
-
   const files = fs
     .readdirSync(REFERENCES_DIR)
     .filter((f) => /\.(png|jpg|jpeg|webp)$/i.test(f));
 
   for (const f of files) {
-    const imgPath = path.join(REFERENCES_DIR, f);
-    const rawImage = await RawImage.read(imgPath);
+    const rawImage = await RawImage.read(path.join(REFERENCES_DIR, f));
     const imageInputs = await _processor(rawImage);
     const output = await _visionModel(imageInputs);
-    const embedding = Array.from(output.image_embeds.data);
-    _refEmbeddings.push({ name: f, embedding });
+    _refEmbeddings.push({ name: f, embedding: Array.from(output.image_embeds.data) });
   }
 
   return _refEmbeddings;
 }
 
-// Encode a single image to CLIP embedding
 async function encodeImage(imagePath) {
   const { RawImage } = await getTransformers();
   const rawImage = await RawImage.read(imagePath);
@@ -124,61 +137,92 @@ async function encodeImage(imagePath) {
   return Array.from(output.image_embeds.data);
 }
 
-// Score a single image against text prompts and reference images
-// Returns { clipScore (0-100), textScore, refScore, bestTextPrompt, bestRefImage }
+// Contrastive zero-shot score: P(Pepe) vs P(abstract art)
+// Uses softmax over positive and negative prompt similarities
+function contrastiveScore(imageEmbedding, positiveEmbeddings, negativeEmbeddings) {
+  // Get best similarity for each category
+  let bestPosSim = -Infinity;
+  let bestPosPrompt = "";
+  for (const { prompt, embedding } of positiveEmbeddings) {
+    const sim = cosineSimilarity(imageEmbedding, embedding);
+    if (sim > bestPosSim) {
+      bestPosSim = sim;
+      bestPosPrompt = prompt;
+    }
+  }
+
+  let bestNegSim = -Infinity;
+  for (const { embedding } of negativeEmbeddings) {
+    const sim = cosineSimilarity(imageEmbedding, embedding);
+    if (sim > bestNegSim) bestNegSim = sim;
+  }
+
+  // Softmax: P(pepe) = exp(pos/T) / (exp(pos/T) + exp(neg/T))
+  // Using log-sum-exp trick for numerical stability
+  const logitPos = bestPosSim / SOFTMAX_TEMPERATURE;
+  const logitNeg = bestNegSim / SOFTMAX_TEMPERATURE;
+  const maxLogit = Math.max(logitPos, logitNeg);
+  const probPepe =
+    Math.exp(logitPos - maxLogit) /
+    (Math.exp(logitPos - maxLogit) + Math.exp(logitNeg - maxLogit));
+
+  return {
+    probPepe,
+    bestPosSim,
+    bestNegSim,
+    bestPosPrompt,
+    margin: bestPosSim - bestNegSim,
+  };
+}
+
+// Score a single image
+// Returns { clipScore (0-100), probPepe, posSim, negSim, margin, refSim }
 async function scoreCLIP(imagePath) {
   const imageEmbedding = await encodeImage(imagePath);
 
-  const textEmbeddings = await getTextEmbeddings();
-  const refEmbeddings = await getRefEmbeddings();
+  const positiveEmbs = await getPositiveEmbeddings();
+  const negativeEmbs = await getNegativeEmbeddings();
+  const refEmbs = await getRefEmbeddings();
 
-  // Text similarity: best match across prompts
-  let bestTextSim = -1;
-  let bestTextPrompt = "";
-  for (const { prompt, embedding } of textEmbeddings) {
-    const sim = cosineSimilarity(imageEmbedding, embedding);
-    if (sim > bestTextSim) {
-      bestTextSim = sim;
-      bestTextPrompt = prompt;
-    }
-  }
+  // Contrastive text scoring
+  const contrast = contrastiveScore(imageEmbedding, positiveEmbs, negativeEmbs);
 
-  // Reference image similarity: best match across references
-  let bestRefSim = -1;
+  // Reference image similarity (optional bonus signal)
+  let bestRefSim = null;
   let bestRefImage = "none";
-  for (const { name, embedding } of refEmbeddings) {
-    const sim = cosineSimilarity(imageEmbedding, embedding);
-    if (sim > bestRefSim) {
-      bestRefSim = sim;
-      bestRefImage = name;
+  if (refEmbs.length > 0) {
+    bestRefSim = -Infinity;
+    for (const { name, embedding } of refEmbs) {
+      const sim = cosineSimilarity(imageEmbedding, embedding);
+      if (sim > bestRefSim) {
+        bestRefSim = sim;
+        bestRefImage = name;
+      }
     }
   }
 
-  // Combine: if we have references, weight them more (they're more specific)
-  // Text similarity is a baseline signal, reference images are the gold standard
-  let combinedSim;
-  if (refEmbeddings.length > 0) {
-    combinedSim = bestRefSim * 0.6 + bestTextSim * 0.4;
-  } else {
-    combinedSim = bestTextSim;
+  // Final score: contrastive probability is the primary signal (0-100)
+  // Reference similarity is a small bonus (up to 10 points) only when
+  // the contrastive score already indicates some Pepe-likeness
+  let clipScore = contrast.probPepe * 100;
+
+  if (bestRefSim !== null && contrast.probPepe > 0.3) {
+    // Bonus: up to 10 points from reference similarity
+    // Only kicks in when CLIP text already thinks it looks frog-like
+    const refBonus = Math.max(0, (bestRefSim - 0.5)) * 20; // 0.5-1.0 -> 0-10
+    clipScore = Math.min(100, clipScore + refBonus);
   }
 
-  // CLIP cosine similarities for matching content typically range 0.15 - 0.35
-  // Map this range to 0-100 for scoring
-  // Below 0.15 = definitely not Pepe, above 0.35 = very strong match
-  const normalized = Math.min(
-    Math.max((combinedSim - 0.15) / (0.35 - 0.15), 0),
-    1.0
-  );
-  const clipScore = Math.round(normalized * 100 * 100) / 100;
+  clipScore = Math.round(clipScore * 100) / 100;
 
   return {
     clipScore,
-    textSim: Math.round(bestTextSim * 1000) / 1000,
-    refSim: refEmbeddings.length > 0 ? Math.round(bestRefSim * 1000) / 1000 : null,
-    bestTextPrompt,
+    probPepe: Math.round(contrast.probPepe * 1000) / 1000,
+    posSim: Math.round(contrast.bestPosSim * 1000) / 1000,
+    negSim: Math.round(contrast.bestNegSim * 1000) / 1000,
+    margin: Math.round(contrast.margin * 1000) / 1000,
+    refSim: bestRefSim !== null ? Math.round(bestRefSim * 1000) / 1000 : null,
     bestRefImage,
-    rawSim: Math.round(combinedSim * 1000) / 1000,
   };
 }
 

@@ -372,10 +372,11 @@ async function main(args) {
         try {
           const clip = await scoreCLIP(s.path);
           s.clipScore = clip.clipScore;
-          s.clipTextSim = clip.textSim;
-          s.clipRefSim = clip.refSim;
-          s.clipRawSim = clip.rawSim;
-          s.bestTextPrompt = clip.bestTextPrompt;
+          s.probPepe = clip.probPepe;
+          s.posSim = clip.posSim;
+          s.negSim = clip.negSim;
+          s.margin = clip.margin;
+          s.refSim = clip.refSim;
           s.bestRefImage = clip.bestRefImage;
         } catch (err) {
           console.error(`\n  CLIP error on ${s.file}: ${err.message}`);
@@ -407,27 +408,29 @@ async function main(args) {
   console.log("─".repeat(100));
   if (hasClip) {
     console.log(
-      "Rank  CLIP     Heuristic  TextSim  RefSim   Green   Eyes    Mouth   File"
+      "Rank  CLIP    P(Pepe)  +Sim    -Sim   Margin  Heur    Green   Eyes    Mouth   File"
     );
   } else {
     console.log(
       "Rank  Score   Green   Eyes    Mouth   Blobs  GreenRatio  File"
     );
   }
-  console.log("─".repeat(100));
+  console.log("─".repeat(110));
   for (let i = 0; i < Math.min(topN, scores.length); i++) {
     const s = scores[i];
     if (hasClip) {
       console.log(
         `#${String(i + 1).padStart(3)}  ` +
-          `${String(s.clipScore ?? "-").padStart(7)}  ` +
-          `${String(s.totalScore).padStart(9)}  ` +
-          `${String(s.clipTextSim ?? "-").padStart(7)}  ` +
-          `${String(s.clipRefSim ?? "-").padStart(6)}  ` +
+          `${String(s.clipScore ?? "-").padStart(6)}  ` +
+          `${String(s.probPepe ?? "-").padStart(7)}  ` +
+          `${String(s.posSim ?? "-").padStart(6)}  ` +
+          `${String(s.negSim ?? "-").padStart(6)}  ` +
+          `${String(s.margin ?? "-").padStart(6)}  ` +
+          `${String(s.totalScore).padStart(6)}  ` +
           `${String(s.greenScore).padStart(6)}  ` +
           `${String(s.eyeScore).padStart(6)}  ` +
           `${String(s.mouthScore).padStart(6)}   ` +
-          `${s.file.slice(0, 28)}`
+          `${s.file.slice(0, 26)}`
       );
     } else {
       console.log(
