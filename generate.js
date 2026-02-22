@@ -51,17 +51,19 @@ const IMAGE_WIDTH = 400;
 const DEFAULT_ADDRESS = "0xA4620Fc13546462e817Fa49e44F04330872495a7";
 
 function parseArgs(args) {
-  let [outdir, count, startIndex] = args;
+  let [outdir, count, startIndex, workerTag] = args;
   if (!outdir) {
-    console.error("Usage: node generate.js <outdir> [count] [start-index]");
+    console.error("Usage: node generate.js <outdir> [count] [start-index] [worker-tag]");
     console.error("  outdir:       directory to save PNGs");
     console.error("  count:        number of images to generate (default: 100)");
     console.error("  start-index:  starting index for filenames (default: 0)");
+    console.error("  worker-tag:   label for log output (default: none)");
     process.exit(1);
   }
   count = count ? parseInt(count) : 100;
   startIndex = startIndex ? parseInt(startIndex) : 0;
-  return { outdir, target: DEFAULT_ADDRESS, count, startIndex };
+  const prefix = workerTag ? `[W${workerTag}] ` : "";
+  return { outdir, target: DEFAULT_ADDRESS, count, startIndex, prefix };
 }
 
 function isHex(s) {
@@ -97,12 +99,12 @@ function generateSeed(target) {
   throw new Error("expected address (40 hex) or seed (64 hex); got: " + target);
 }
 
-async function renderOne(target, outdir, index, total) {
+async function renderOne(target, outdir, index, localNum, localTotal, prefix) {
   const seed = generateSeed(target);
   const traits = traitsLib.extractTraits(seed);
 
-  console.log(`[${index + 1}/${total}] Rendering seed: ${seed.slice(0, 18)}...`);
-  console.log(`  Traits: palette=${traits.colorPalette} flow=${traits.flowField} structure=${traits.structure} spacing=${traits.spacing}`);
+  console.log(`${prefix}[${localNum}/${localTotal}] #${String(index).padStart(5, "0")} Rendering seed: ${seed.slice(0, 18)}...`);
+  console.log(`${prefix}  Traits: palette=${traits.colorPalette} flow=${traits.flowField} structure=${traits.structure} spacing=${traits.spacing}`);
 
   const startTime = Date.now();
   const { imageData, renderData } = await render({ seed, width: IMAGE_WIDTH });
@@ -119,51 +121,30 @@ async function renderOne(target, outdir, index, total) {
     JSON.stringify({ seed, traits, renderData, elapsed: parseFloat(elapsed) }, null, 2)
   );
 
-  console.log(`  Done in ${elapsed}s -> ${outfile}`);
+  console.log(`${prefix}  Done in ${elapsed}s -> ${outfile}`);
   return { seed, traits, renderData, outfile };
 }
 
 async function main(args) {
-  const { outdir, target, count, startIndex } = parseArgs(args);
+  const { outdir, target, count, startIndex, prefix } = parseArgs(args);
 
   if (!fs.existsSync(outdir)) {
     fs.mkdirSync(outdir, { recursive: true });
   }
 
-  console.log(`\n=== QQL Mona Lisa Hunter ===`);
-  console.log(`Generating ${count} outputs with Mona Lisa-optimized traits`);
-  console.log(`Palettes: ${PALETTES.join(" / ")} (random per render)`);
-  console.log(`Output directory: ${outdir}`);
-  if (startIndex > 0) console.log(`Starting at index: ${startIndex}`);
-  console.log(`Trait template: ${JSON.stringify(getFixedTraits(), null, 2)}\n`);
+  console.log(`${prefix}Generating ${count} images (indices ${startIndex}-${startIndex + count - 1})`);
 
   let generated = 0;
   for (let i = 0; i < count; i++) {
     try {
-      await renderOne(target, outdir, startIndex + i, count);
+      await renderOne(target, outdir, startIndex + i, i + 1, count, prefix);
       generated++;
     } catch (err) {
-      console.error(`  ERROR on render ${i + 1}: ${err.message}`);
+      console.error(`${prefix}  ERROR on render ${startIndex + i}: ${err.message}`);
     }
   }
 
-  // Save summary
-  const summaryFile = path.join(outdir, "_summary.json");
-  await fs.promises.writeFile(
-    summaryFile,
-    JSON.stringify(
-      {
-        totalGenerated: generated,
-        palettes: PALETTES,
-        imageWidth: IMAGE_WIDTH,
-        target,
-      },
-      null,
-      2
-    )
-  );
-  console.log(`\nGenerated ${generated}/${count} images.`);
-  console.log(`Summary saved to ${summaryFile}`);
+  console.log(`${prefix}Done: ${generated}/${count} images.`);
 }
 
 main(process.argv.slice(2)).catch((e) => {

@@ -36,7 +36,7 @@ while [ $GENERATED -lt $COUNT ]; do
     if [ $GENERATED -lt $COUNT ]; then
       REMAINING=$((COUNT - GENERATED))
       THIS_CHUNK=$((REMAINING < CHUNK ? REMAINING : CHUNK))
-      node --max-old-space-size=3072 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED" &
+      node --max-old-space-size=3072 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED" "$W" &
       PIDS="$PIDS $!"
       GENERATED=$((GENERATED + THIS_CHUNK))
     fi
