@@ -353,16 +353,16 @@ async function main(args) {
     console.log(`No images scored >= ${HEURISTIC_THRESHOLD} in heuristics. Skipping CLIP pass.`);
     console.log(`Best heuristic score: ${scores[0]?.totalScore || 0}\n`);
   } else {
-    // Pass 2: CLIP semantic scoring — the real judge
+    // Pass 2: CLIP image similarity — compare against reference images
     console.log(`Pass 2 (CLIP): ${clipCount}/${files.length} images passed heuristic threshold (>= ${HEURISTIC_THRESHOLD})`);
     console.log("  Initializing CLIP model...");
     try {
       await initCLIP();
       clipAvailable = true;
     } catch (err) {
-      console.error(`\n  CLIP model unavailable: ${err.message}`);
+      console.error(`\n  CLIP unavailable: ${err.message}`);
       console.log("  Falling back to heuristic-only scoring.");
-      console.log("  To enable CLIP: ensure internet access on first run to download the model (~350MB).\n");
+      console.log("  To enable CLIP: ensure internet access on first run + reference images in ./references/\n");
     }
 
     if (clipAvailable) {
@@ -371,61 +371,48 @@ async function main(args) {
         process.stdout.write(`\r  CLIP scoring: ${i + 1}/${clipCount}...`);
         try {
           const clip = await scoreCLIP(s.path);
-          s.clipScore = clip.clipScore;
-          s.probPepe = clip.probPepe;
-          s.posSim = clip.posSim;
-          s.negSim = clip.negSim;
-          s.margin = clip.margin;
-          s.refSim = clip.refSim;
-          s.bestRefImage = clip.bestRefImage;
+          s.similarity = clip.similarity;
+          s.bestRef = clip.bestRef;
         } catch (err) {
           console.error(`\n  CLIP error on ${s.file}: ${err.message}`);
-          s.clipScore = 0;
+          s.similarity = 0;
         }
       }
       console.log(" Done.\n");
-
-      // Final ranking: CLIP score is primary, heuristic is tiebreaker
-      // Images that didn't reach CLIP get sorted below all CLIP-scored images
-      for (const s of scores) {
-        if (s.clipScore != null) {
-          // CLIP-scored: use CLIP as primary (0-100), heuristic as decimal tiebreaker
-          s.finalScore = Math.round((s.clipScore + s.totalScore / 100) * 100) / 100;
-        } else {
-          // Didn't pass heuristic: rank by heuristic alone, below all CLIP images
-          s.finalScore = Math.round(s.totalScore * 100) / 100 * -1;
-        }
-      }
     }
   }
 
-  // Sort by final score (CLIP-scored images on top)
-  scores.sort((a, b) => (b.finalScore ?? b.totalScore) - (a.finalScore ?? a.totalScore));
+  // Sort: CLIP similarity (primary), heuristic (tiebreaker)
+  scores.sort((a, b) => {
+    // CLIP-scored images first, sorted by similarity
+    if (a.similarity != null && b.similarity != null)
+      return b.similarity - a.similarity || b.totalScore - a.totalScore;
+    if (a.similarity != null) return -1;
+    if (b.similarity != null) return 1;
+    return b.totalScore - a.totalScore;
+  });
 
   // Print top results
   const hasClip = clipAvailable && clipCount > 0;
   console.log(`Top ${Math.min(topN, scores.length)} results:`);
-  console.log("─".repeat(100));
+  console.log("─".repeat(95));
   if (hasClip) {
     console.log(
-      "Rank  CLIP    P(Pepe)  +Sim    -Sim   Margin  Heur    Green   Eyes    Mouth   File"
+      "Rank  Similarity  BestRef                Heur    Green   Eyes    Mouth   File"
     );
   } else {
     console.log(
       "Rank  Score   Green   Eyes    Mouth   Blobs  GreenRatio  File"
     );
   }
-  console.log("─".repeat(110));
+  console.log("─".repeat(95));
   for (let i = 0; i < Math.min(topN, scores.length); i++) {
     const s = scores[i];
     if (hasClip) {
       console.log(
         `#${String(i + 1).padStart(3)}  ` +
-          `${String(s.clipScore ?? "-").padStart(6)}  ` +
-          `${String(s.probPepe ?? "-").padStart(7)}  ` +
-          `${String(s.posSim ?? "-").padStart(6)}  ` +
-          `${String(s.negSim ?? "-").padStart(6)}  ` +
-          `${String(s.margin ?? "-").padStart(6)}  ` +
+          `${String(s.similarity ?? "-").padStart(10)}  ` +
+          `${(s.bestRef ?? "-").padEnd(21).slice(0, 21)}  ` +
           `${String(s.totalScore).padStart(6)}  ` +
           `${String(s.greenScore).padStart(6)}  ` +
           `${String(s.eyeScore).padStart(6)}  ` +
@@ -442,7 +429,7 @@ async function main(args) {
       );
     }
   }
-  console.log("─".repeat(100));
+  console.log("─".repeat(95));
 
   // Copy top-N to results directory
   const resultsDir = path.join(path.dirname(rendersDir), "results");
@@ -451,8 +438,8 @@ async function main(args) {
   }
   for (let i = 0; i < Math.min(topN, scores.length); i++) {
     const s = scores[i];
-    const displayScore = s.clipScore ?? s.totalScore;
-    const destName = `rank-${String(i + 1).padStart(3, "0")}-clip-${displayScore}-heur-${s.totalScore}-${s.file}`;
+    const sim = s.similarity ?? 0;
+    const destName = `rank-${String(i + 1).padStart(3, "0")}-sim-${sim}-heur-${s.totalScore}-${s.file}`;
     fs.copyFileSync(s.path, path.join(resultsDir, destName));
   }
   console.log(`\nTop ${Math.min(topN, scores.length)} copied to ${resultsDir}/`);
