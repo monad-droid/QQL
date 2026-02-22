@@ -75,9 +75,11 @@ function isLight(h, s, b) {
 }
 
 
-// Pepe mouth: warm/brown/red tones in lower face region
+// Pepe mouth: warm/brown/red tones OR dark lines (black mouth outlines)
 function isMouthColor(h, s, b) {
-  return h >= 0 && h <= 60 && s >= 15 && b >= 15 && b <= 95;
+  const isWarm = h >= 0 && h <= 60 && s >= 15 && b >= 15 && b <= 95;
+  const isDark = b <= 20;
+  return isWarm || isDark;
 }
 
 async function scoreImage(imagePath) {
@@ -143,12 +145,16 @@ async function scoreImage(imagePath) {
   const lowerThirdPixels = (h - lowerThirdY) * w;
 
   // Score 1: Green dominance (0-25 points)
+  // A Pepe face with background/eyes/outlines realistically has 15-40% green.
+  // Full marks at 20%+, ramp up from 8-20%, penalize above 75% (all green = no face).
   const greenRatio = greenPixels / totalPixels;
   let greenScore = 0;
-  if (greenRatio >= 0.3 && greenRatio <= 0.7) {
-    greenScore = 25 * (1 - Math.abs(greenRatio - 0.5) / 0.2);
-  } else if (greenRatio >= 0.15 && greenRatio < 0.3) {
-    greenScore = 12.5 * (greenRatio / 0.3);
+  if (greenRatio >= 0.2 && greenRatio <= 0.75) {
+    greenScore = 25;
+  } else if (greenRatio >= 0.08 && greenRatio < 0.2) {
+    greenScore = 25 * (greenRatio - 0.08) / 0.12;
+  } else if (greenRatio > 0.75) {
+    greenScore = 25 * Math.max(0, 1 - (greenRatio - 0.75) / 0.2);
   }
 
   // Score 2: Eye regions - light spots in upper half (0-25 points)
@@ -183,15 +189,15 @@ async function scoreImage(imagePath) {
     }
   }
   const avgSymmetryDiff = symmetryDiff / sampleCount;
-  const symmetryScore = 15 * Math.max(0, 1 - avgSymmetryDiff * 3);
+  const symmetryScore = 15 * Math.max(0, 1 - avgSymmetryDiff * 2);
 
   // Score 5: Mouth region - brown/warm tones in lower third (0-15 points)
   const mouthRatio = mouthPixels / lowerThirdPixels;
   let mouthScore = 0;
-  if (mouthRatio > 0.05 && mouthRatio < 0.6) {
+  if (mouthRatio > 0.02 && mouthRatio < 0.6) {
     const mouthSymmetry =
       Math.min(mouthLeft, mouthRight) / (Math.max(mouthLeft, mouthRight) || 1);
-    mouthScore = 10 * Math.min(mouthRatio / 0.15, 1.0) + 5 * mouthSymmetry;
+    mouthScore = 10 * Math.min(mouthRatio / 0.08, 1.0) + 5 * mouthSymmetry;
   }
 
   const totalScore = greenScore + eyeScore + symmetryScore + mouthScore;
