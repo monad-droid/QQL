@@ -189,7 +189,7 @@ async function scoreImage(imagePath) {
     }
   }
   const avgSymmetryDiff = symmetryDiff / sampleCount;
-  const symmetryScore = 15 * Math.max(0, 1 - avgSymmetryDiff * 2);
+  const symmetryScore = 15 * Math.max(0, 1 - avgSymmetryDiff * 1.2);
 
   // Score 5: Mouth region - warm tones or dark lines in bottom 75% (0-15 points)
   const mouthRegionPixels = (h - Math.floor(h * 0.25)) * w;
@@ -198,7 +198,7 @@ async function scoreImage(imagePath) {
   if (mouthRatio > 0.02 && mouthRatio < 0.6) {
     const mouthSymmetry =
       Math.min(mouthLeft, mouthRight) / (Math.max(mouthLeft, mouthRight) || 1);
-    mouthScore = 10 * Math.min(mouthRatio / 0.08, 1.0) + 5 * mouthSymmetry;
+    mouthScore = 10 * Math.min(mouthRatio / 0.05, 1.0) + 5 * mouthSymmetry;
   }
 
   const totalScore = greenScore + eyeScore + symmetryScore + mouthScore;
