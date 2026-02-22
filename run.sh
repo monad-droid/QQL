@@ -10,7 +10,7 @@ COUNT=${1:-500}
 TOP_N=${2:-20}
 RENDERS_DIR="renders"
 RESULTS_DIR="results"
-CHUNK=1
+CHUNK=10
 
 echo "============================================"
 echo "  QQL Pepe Hunter (CLIP-powered)"
@@ -30,7 +30,7 @@ GENERATED=0
 while [ $GENERATED -lt $COUNT ]; do
   REMAINING=$((COUNT - GENERATED))
   THIS_CHUNK=$((REMAINING < CHUNK ? REMAINING : CHUNK))
-  node --max-old-space-size=1536 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED" || true
+  node --max-old-space-size=4096 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED" || true
   GENERATED=$((GENERATED + THIS_CHUNK))
 done
 GEN_END=$(date +%s)
@@ -40,7 +40,7 @@ echo ""
 
 # Step 2: Score (heuristic pre-filter + CLIP semantic scoring)
 echo ">>> Step 2/2: Scoring and ranking..."
-node --max-old-space-size=1536 score.js "$RENDERS_DIR" "$TOP_N"
+node --max-old-space-size=4096 score.js "$RENDERS_DIR" "$TOP_N"
 SCORE_END=$(date +%s)
 echo ""
 echo "Scoring complete in $((SCORE_END - GEN_END))s"
