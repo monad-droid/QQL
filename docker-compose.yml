@@ -1,0 +1,27 @@
+## QQL Pepe Hunter - 24/7 Cloud Deployment
+##
+## Quick start:
+##   docker compose up -d          # start hunting in background
+##   docker compose logs -f        # watch progress
+##   docker compose down           # stop
+##
+## Check results:
+##   ls hall-of-fame/              # all-time best images
+##   cat hall-of-fame/_stats.json  # running stats
+##   ls logs/                      # per-batch logs
+
+services:
+  hunter:
+    build: .
+    entrypoint: ["./run-loop.sh"]
+    command: ["500", "20", "0.85"]   # batch-size, top-n, min-similarity
+    restart: unless-stopped
+    volumes:
+      - ./hall-of-fame:/app/hall-of-fame   # persisted best results
+      - ./results:/app/results             # current batch results
+      - ./logs:/app/logs                   # batch logs
+      - ./references:/app/references       # your Pepe reference images
+    deploy:
+      resources:
+        limits:
+          memory: 4G

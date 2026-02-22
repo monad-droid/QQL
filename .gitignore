@@ -6,6 +6,8 @@ qqlrs/
 renders/
 results/
 scores/
+hall-of-fame/
+logs/
 
 # Node
 node_modules/
