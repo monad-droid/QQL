@@ -54,15 +54,17 @@ const IMAGE_WIDTH = 400;
 const DEFAULT_ADDRESS = "0xA4620Fc13546462e817Fa49e44F04330872495a7";
 
 function parseArgs(args) {
-  let [outdir, count] = args;
+  let [outdir, count, startIndex] = args;
   if (!outdir) {
-    console.error("Usage: node generate.js <outdir> [count]");
-    console.error("  outdir: directory to save PNGs");
-    console.error("  count:  number of images to generate (default: 100)");
+    console.error("Usage: node generate.js <outdir> [count] [start-index]");
+    console.error("  outdir:       directory to save PNGs");
+    console.error("  count:        number of images to generate (default: 100)");
+    console.error("  start-index:  starting index for filenames (default: 0)");
     process.exit(1);
   }
   count = count ? parseInt(count) : 100;
-  return { outdir, target: DEFAULT_ADDRESS, count };
+  startIndex = startIndex ? parseInt(startIndex) : 0;
+  return { outdir, target: DEFAULT_ADDRESS, count, startIndex };
 }
 
 function isHex(s) {
@@ -125,7 +127,7 @@ async function renderOne(target, outdir, index, total) {
 }
 
 async function main(args) {
-  const { outdir, target, count } = parseArgs(args);
+  const { outdir, target, count, startIndex } = parseArgs(args);
 
   if (!fs.existsSync(outdir)) {
     fs.mkdirSync(outdir, { recursive: true });
@@ -134,12 +136,13 @@ async function main(args) {
   console.log(`\n=== QQL Pepe Hunter ===`);
   console.log(`Generating ${count} outputs with Pepe-optimized traits`);
   console.log(`Output directory: ${outdir}`);
+  if (startIndex > 0) console.log(`Starting at index: ${startIndex}`);
   console.log(`Fixed traits: ${JSON.stringify(FIXED_TRAITS, null, 2)}\n`);
 
   let generated = 0;
   for (let i = 0; i < count; i++) {
     try {
-      await renderOne(target, outdir, i, count);
+      await renderOne(target, outdir, startIndex + i, count);
       generated++;
     } catch (err) {
       console.error(`  ERROR on render ${i + 1}: ${err.message}`);

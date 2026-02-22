@@ -6,17 +6,15 @@
 
 set -e
 
-# Limit Node heap to avoid OOM on small droplets
-export NODE_OPTIONS="--max-old-space-size=512"
-
 COUNT=${1:-500}
 TOP_N=${2:-20}
 RENDERS_DIR="renders"
 RESULTS_DIR="results"
+CHUNK=20
 
 echo "============================================"
 echo "  QQL Pepe Hunter (CLIP-powered)"
-echo "  Generating: $COUNT images"
+echo "  Generating: $COUNT images (chunks of $CHUNK)"
 echo "  Keeping top: $TOP_N results"
 echo "  Scoring: Heuristic pre-filter → CLIP"
 echo "============================================"
@@ -25,10 +23,16 @@ echo ""
 # Clean previous run
 rm -rf "$RENDERS_DIR"/* "$RESULTS_DIR"/*
 
-# Step 1: Generate
+# Step 1: Generate in chunks to avoid OOM (renderer leaks memory)
 echo ">>> Step 1/2: Generating $COUNT images..."
 START=$(date +%s)
-node generate.js "$RENDERS_DIR" "$COUNT"
+GENERATED=0
+while [ $GENERATED -lt $COUNT ]; do
+  REMAINING=$((COUNT - GENERATED))
+  THIS_CHUNK=$((REMAINING < CHUNK ? REMAINING : CHUNK))
+  node --max-old-space-size=1536 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED" || true
+  GENERATED=$((GENERATED + THIS_CHUNK))
+done
 GEN_END=$(date +%s)
 echo ""
 echo "Generation complete in $((GEN_END - START))s"
@@ -36,7 +40,7 @@ echo ""
 
 # Step 2: Score (heuristic pre-filter + CLIP semantic scoring)
 echo ">>> Step 2/2: Scoring and ranking..."
-node score.js "$RENDERS_DIR" "$TOP_N"
+node --max-old-space-size=1536 score.js "$RENDERS_DIR" "$TOP_N"
 SCORE_END=$(date +%s)
 echo ""
 echo "Scoring complete in $((SCORE_END - GEN_END))s"
