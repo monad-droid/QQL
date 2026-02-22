@@ -3,6 +3,7 @@ FROM node:22-slim
 # System dependencies for node-canvas
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    ca-certificates \
     python3 \
     git \
     libcairo2-dev \
