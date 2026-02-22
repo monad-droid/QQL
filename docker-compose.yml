@@ -14,7 +14,7 @@ services:
   hunter:
     build: .
     entrypoint: ["./run-loop.sh"]
-    command: ["500", "20", "0.85"]   # batch-size, top-n, min-similarity
+    command: ["100", "20", "0.85"]   # batch-size, top-n, min-similarity
     restart: unless-stopped
     volumes:
       - ./hall-of-fame:/app/hall-of-fame   # persisted best results

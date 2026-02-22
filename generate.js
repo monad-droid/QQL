@@ -47,8 +47,9 @@ const FIXED_TRAITS = {
   spacing: null,
 };
 
-// Smaller width for batch generation speed; increase for final renders
-const IMAGE_WIDTH = 800;
+// 400px is enough for CLIP scoring (which uses 224px internally).
+// Re-render winners at full resolution later.
+const IMAGE_WIDTH = 400;
 
 const DEFAULT_ADDRESS = "0xA4620Fc13546462e817Fa49e44F04330872495a7";
 
@@ -135,11 +136,11 @@ async function main(args) {
   console.log(`Output directory: ${outdir}`);
   console.log(`Fixed traits: ${JSON.stringify(FIXED_TRAITS, null, 2)}\n`);
 
-  const results = [];
+  let generated = 0;
   for (let i = 0; i < count; i++) {
     try {
-      const result = await renderOne(target, outdir, i, count);
-      results.push(result);
+      await renderOne(target, outdir, i, count);
+      generated++;
     } catch (err) {
       console.error(`  ERROR on render ${i + 1}: ${err.message}`);
     }
@@ -151,7 +152,7 @@ async function main(args) {
     summaryFile,
     JSON.stringify(
       {
-        totalGenerated: results.length,
+        totalGenerated: generated,
         fixedTraits: FIXED_TRAITS,
         imageWidth: IMAGE_WIDTH,
         target,
@@ -160,7 +161,7 @@ async function main(args) {
       2
     )
   );
-  console.log(`\nGenerated ${results.length}/${count} images.`);
+  console.log(`\nGenerated ${generated}/${count} images.`);
   console.log(`Summary saved to ${summaryFile}`);
 }
 

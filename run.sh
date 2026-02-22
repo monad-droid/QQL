@@ -6,6 +6,9 @@
 
 set -e
 
+# Limit Node heap to avoid OOM on small droplets
+export NODE_OPTIONS="--max-old-space-size=512"
+
 COUNT=${1:-500}
 TOP_N=${2:-20}
 RENDERS_DIR="renders"
