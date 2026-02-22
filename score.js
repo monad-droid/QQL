@@ -305,7 +305,7 @@ async function main(args) {
 
   const files = fs
     .readdirSync(rendersDir)
-    .filter((f) => f.endsWith(".png"))
+    .filter((f) => /\.(png|jpg|jpeg|webp)$/i.test(f))
     .sort();
 
   if (files.length === 0) {
