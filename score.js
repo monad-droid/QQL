@@ -20,13 +20,13 @@ const { createCanvas, loadImage } = require("canvas");
 // Output: Ranked list of best candidates + copies top-N to results/
 // =============================================================================
 
-// Edinburgh greens: eCoolDarkGreen (hue 170), eMidGreen (hue 150),
-// Edinburgh Green bg (hue 150). Broader range to catch green variations.
-const PEPE_GREEN_HUE_MIN = 120;
+// Pepe greens span from yellow-green (~80) through blue-green (~200).
+// Classic meme Pepe is hue ~85-110, Edinburgh palette is ~150-170.
+const PEPE_GREEN_HUE_MIN = 70;
 const PEPE_GREEN_HUE_MAX = 200;
-const PEPE_GREEN_SAT_MIN = 15;
-const PEPE_GREEN_BRIGHT_MAX = 85;
-const PEPE_GREEN_BRIGHT_MIN = 10; // Edinburgh greens go as low as bright 20
+const PEPE_GREEN_SAT_MIN = 10;
+const PEPE_GREEN_BRIGHT_MAX = 100;
+const PEPE_GREEN_BRIGHT_MIN = 10;
 
 const REFERENCES_DIR = path.join(__dirname, "references");
 
@@ -75,9 +75,9 @@ function isLight(h, s, b) {
 }
 
 
-// Pepe mouth: warm/brown tones (hue 10-45, moderate sat, moderate bright)
+// Pepe mouth: warm/brown/red tones in lower face region
 function isMouthColor(h, s, b) {
-  return h >= 5 && h <= 50 && s >= 25 && b >= 30 && b <= 90;
+  return h >= 0 && h <= 60 && s >= 15 && b >= 15 && b <= 95;
 }
 
 async function scoreImage(imagePath) {
