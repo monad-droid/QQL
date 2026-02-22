@@ -50,17 +50,18 @@ const FIXED_TRAITS = {
 // Smaller width for batch generation speed; increase for final renders
 const IMAGE_WIDTH = 800;
 
+const DEFAULT_ADDRESS = "0xA4620Fc13546462e817Fa49e44F04330872495a7";
+
 function parseArgs(args) {
-  let [outdir, target, count] = args;
-  if (!outdir || !target) {
-    console.error("Usage: node generate.js <outdir> <address> [count]");
-    console.error("  outdir:  directory to save PNGs");
-    console.error("  address: Ethereum address (0x..., 40 hex chars)");
-    console.error("  count:   number of images to generate (default: 100)");
+  let [outdir, count] = args;
+  if (!outdir) {
+    console.error("Usage: node generate.js <outdir> [count]");
+    console.error("  outdir: directory to save PNGs");
+    console.error("  count:  number of images to generate (default: 100)");
     process.exit(1);
   }
   count = count ? parseInt(count) : 100;
-  return { outdir, target, count };
+  return { outdir, target: DEFAULT_ADDRESS, count };
 }
 
 function isHex(s) {
