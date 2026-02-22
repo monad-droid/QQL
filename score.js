@@ -4,20 +4,16 @@ const { createCanvas, loadImage } = require("canvas");
 const { initCLIP, scoreCLIP } = require("./clip-score");
 
 // =============================================================================
-// QQL Pepe Scorer
+// QQL Mona Lisa Scorer
 //
-// Two-pass scoring system:
+// Scoring system:
 //   Pass 1 (Heuristic - all images, fast pre-filter):
-//     1. Green dominance (0-30) - How much of the image is green (Pepe's face)
-//     2. Eye detection   (0-30) - Light/white regions in both sides of upper half
-//     3. Mouth detection (0-20) - Warm/dark tones in the lower portion
-//     Threshold: images scoring >= 20 advance to Pass 2.
+//     Lightweight color/composition checks. Threshold is set to 0 so all
+//     images advance to CLIP — the heuristic is just for tiebreaking.
 //
-//   Pass 2 (CLIP semantic comparison - candidates only):
-//     Uses OpenAI CLIP model to compute semantic similarity to "Pepe the frog"
-//     and reference images. This is the real judge — it understands what Pepe
-//     looks like, not just green pixels and round blobs.
-//     Score: 0-100 points.
+//   Pass 2 (CLIP semantic comparison):
+//     Uses CLIP vision model to compute image-to-image similarity against
+//     reference images in ./references/. This is the real judge.
 //
 //   Final ranking: CLIP score (primary), heuristic (tiebreaker).
 //
@@ -25,13 +21,8 @@ const { initCLIP, scoreCLIP } = require("./clip-score");
 // Output: Ranked list of best candidates + copies top-N to results/
 // =============================================================================
 
-// Pepe greens span from yellow-green (~80) through blue-green (~200).
-// Classic meme Pepe is hue ~85-110, Edinburgh palette is ~150-170.
-const PEPE_GREEN_HUE_MIN = 70;
-const PEPE_GREEN_HUE_MAX = 200;
-const PEPE_GREEN_SAT_MIN = 10;
-const PEPE_GREEN_BRIGHT_MAX = 100;
-const PEPE_GREEN_BRIGHT_MIN = 10;
+// Mona Lisa tones: dark values, warm browns/ambers, muted greens.
+// Heuristic is lightweight — CLIP does the real work (threshold = 0).
 
 const REFERENCES_DIR = path.join(__dirname, "references");
 
@@ -65,79 +56,19 @@ function rgbToHsb(r, g, b) {
   return { h, s, b: v };
 }
 
-function isGreen(h, s, b) {
-  return (
-    h >= PEPE_GREEN_HUE_MIN &&
-    h <= PEPE_GREEN_HUE_MAX &&
-    s >= PEPE_GREEN_SAT_MIN &&
-    b >= PEPE_GREEN_BRIGHT_MIN &&
-    b <= PEPE_GREEN_BRIGHT_MAX
-  );
+// Dark pixel: brightness <= 40
+function isDark(h, s, b) {
+  return b <= 40;
 }
 
-function isLight(h, s, b) {
-  return b >= 75 && s <= 30;
+// Warm pixel: hue 0-60 (reds/oranges/yellows/browns) with some saturation
+function isWarm(h, s, b) {
+  return h >= 0 && h <= 60 && s >= 10 && b >= 10;
 }
 
-
-// Pepe mouth: warm/brown/red tones OR dark lines (black mouth outlines)
-function isMouthColor(h, s, b) {
-  const isWarm = h >= 0 && h <= 60 && s >= 15 && b >= 15 && b <= 95;
-  const isDark = b <= 30;
-  return isWarm || isDark;
-}
-
-// ---------------------------------------------------------------------------
-// Blob detection via flood-fill on a binary mask
-// Returns array of { pixels, minX, maxX, minY, maxY, cx, cy }
-// ---------------------------------------------------------------------------
-function findBlobs(mask, w, h, minSize) {
-  const visited = new Uint8Array(w * h);
-  const blobs = [];
-  for (let i = 0; i < w * h; i++) {
-    if (mask[i] && !visited[i]) {
-      // BFS flood fill
-      const queue = [i];
-      visited[i] = 1;
-      let pixels = 0;
-      let minX = w, maxX = 0, minY = h, maxY = 0;
-      let sumX = 0, sumY = 0;
-      while (queue.length > 0) {
-        const idx = queue.pop();
-        const x = idx % w;
-        const y = (idx - x) / w;
-        pixels++;
-        sumX += x;
-        sumY += y;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        // 4-connected neighbors
-        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-          const nx = x + dx, ny = y + dy;
-          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-            const ni = ny * w + nx;
-            if (mask[ni] && !visited[ni]) {
-              visited[ni] = 1;
-              queue.push(ni);
-            }
-          }
-        }
-      }
-      if (pixels >= minSize) {
-        blobs.push({
-          pixels,
-          minX, maxX, minY, maxY,
-          cx: sumX / pixels,
-          cy: sumY / pixels,
-          bboxW: maxX - minX + 1,
-          bboxH: maxY - minY + 1,
-        });
-      }
-    }
-  }
-  return blobs;
+// Muted/earthy pixel: low saturation, mid brightness (the sfumato look)
+function isMuted(h, s, b) {
+  return s <= 40 && b >= 15 && b <= 70;
 }
 
 async function scoreImage(imagePath) {
@@ -151,20 +82,10 @@ async function scoreImage(imagePath) {
   const data = ctx.getImageData(0, 0, w, h).data;
 
   const totalPixels = w * h;
-  const midY = Math.floor(h / 2);
-  const midX = Math.floor(w / 2);
 
-  // Build masks and count pixels in one pass
-  let greenPixels = 0;
-  const lightMask = new Uint8Array(w * h); // for blob detection
-  let mouthPixels = 0;
-  let mouthLeft = 0, mouthRight = 0;
-
-  // Mouth concentration tracking — divide lower half into a grid
-  const mouthGridCols = 8;
-  const mouthGridRows = 4;
-  const mouthGrid = new Float64Array(mouthGridCols * mouthGridRows);
-  const mouthStartY = Math.floor(h * 0.5); // bottom half only
+  let darkPixels = 0;
+  let warmPixels = 0;
+  let mutedPixels = 0;
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -174,142 +95,64 @@ async function scoreImage(imagePath) {
       const b = data[idx + 2];
       const hsb = rgbToHsb(r, g, b);
 
-      if (isGreen(hsb.h, hsb.s, hsb.b)) {
-        greenPixels++;
-      }
-
-      if (isLight(hsb.h, hsb.s, hsb.b)) {
-        lightMask[y * w + x] = 1;
-      }
-
-      // Mouth: bottom half only
-      if (y >= mouthStartY && isMouthColor(hsb.h, hsb.s, hsb.b)) {
-        mouthPixels++;
-        if (x < midX) mouthLeft++;
-        else mouthRight++;
-        // Track which grid cell this falls in
-        const gx = Math.min(Math.floor((x / w) * mouthGridCols), mouthGridCols - 1);
-        const gy = Math.min(Math.floor(((y - mouthStartY) / (h - mouthStartY)) * mouthGridRows), mouthGridRows - 1);
-        mouthGrid[gy * mouthGridCols + gx]++;
-      }
+      if (isDark(hsb.h, hsb.s, hsb.b)) darkPixels++;
+      if (isWarm(hsb.h, hsb.s, hsb.b)) warmPixels++;
+      if (isMuted(hsb.h, hsb.s, hsb.b)) mutedPixels++;
     }
   }
 
   // =========================================================================
-  // Score 1: Green dominance (0-30 points)
+  // Score 1: Dark tones (0-30) — Mona Lisa is predominantly dark
   // =========================================================================
-  const greenRatio = greenPixels / totalPixels;
-  let greenScore = 0;
-  if (greenRatio >= 0.2 && greenRatio <= 0.75) {
-    greenScore = 30;
-  } else if (greenRatio >= 0.08 && greenRatio < 0.2) {
-    greenScore = 30 * (greenRatio - 0.08) / 0.12;
-  } else if (greenRatio > 0.75) {
-    greenScore = 30 * Math.max(0, 1 - (greenRatio - 0.75) / 0.2);
+  const darkRatio = darkPixels / totalPixels;
+  let darkScore = 0;
+  if (darkRatio >= 0.2 && darkRatio <= 0.8) {
+    darkScore = 30;
+  } else if (darkRatio >= 0.05 && darkRatio < 0.2) {
+    darkScore = 30 * (darkRatio - 0.05) / 0.15;
+  } else if (darkRatio > 0.8) {
+    darkScore = 30 * Math.max(0, 1 - (darkRatio - 0.8) / 0.15);
   }
 
   // =========================================================================
-  // Score 2: Eye detection via blob analysis (0-30 points)
-  //
-  // Find connected blobs of light pixels. Look for a PAIR that:
-  //   - Are both in the upper 60% of the image
-  //   - Are roughly the same size (within 3x of each other)
-  //   - Are horizontally spaced (not stacked vertically)
-  //   - Are at roughly the same height
-  //   - Are each roughly circular (aspect ratio not too extreme)
-  //   - Are large enough to be "eyes" not tiny dots
+  // Score 2: Warm tones (0-30) — browns, ambers, skin tones
   // =========================================================================
-  const minBlobSize = Math.floor(totalPixels * 0.002); // at least 0.2% of image
-  const allBlobs = findBlobs(lightMask, w, h, minBlobSize);
-
-  // Filter to blobs in upper 60%
-  const upperBlobs = allBlobs.filter(b => b.cy < h * 0.6);
-
-  let eyeScore = 0;
-  let bestEyePair = null;
-
-  for (let i = 0; i < upperBlobs.length; i++) {
-    for (let j = i + 1; j < upperBlobs.length; j++) {
-      const a = upperBlobs[i];
-      const b = upperBlobs[j];
-
-      // Size similarity — smaller blob should be at least 1/3 the size of larger
-      const sizeRatio = Math.min(a.pixels, b.pixels) / Math.max(a.pixels, b.pixels);
-      if (sizeRatio < 0.33) continue;
-
-      // Horizontally separated — centers should be apart
-      const dx = Math.abs(a.cx - b.cx);
-      if (dx < w * 0.1) continue; // too close together horizontally
-
-      // At roughly the same height — vertical offset small relative to image
-      const dy = Math.abs(a.cy - b.cy);
-      if (dy > h * 0.2) continue; // too far apart vertically
-
-      // Each blob should be roughly circular (aspect ratio)
-      const arA = a.bboxW / (a.bboxH || 1);
-      const arB = b.bboxW / (b.bboxH || 1);
-      if (arA > 3 || arA < 0.33) continue; // too elongated
-      if (arB > 3 || arB < 0.33) continue;
-
-      // Score this pair
-      const avgSize = (a.pixels + b.pixels) / 2;
-      const sizeScore = Math.min(avgSize / (totalPixels * 0.01), 1.0); // full marks at 1% each
-      const pairScore = sizeScore * sizeRatio; // penalize size mismatch
-
-      if (pairScore > eyeScore) {
-        eyeScore = pairScore;
-        bestEyePair = [a, b];
-      }
-    }
-  }
-  eyeScore = 30 * Math.min(eyeScore, 1.0);
-
-  // =========================================================================
-  // Score 3: Mouth region (0-20 points)
-  //
-  // Look for warm/dark pixels concentrated in the lower half.
-  // Penalize if mouth-colored pixels are evenly spread everywhere
-  // (that's just a warm-toned background, not a mouth).
-  // =========================================================================
-  const mouthRegionPixels = (h - mouthStartY) * w;
-  const mouthRatio = mouthPixels / mouthRegionPixels;
-  let mouthScore = 0;
-  if (mouthRatio > 0.02 && mouthRatio < 0.6) {
-    // Check concentration: what fraction of mouth pixels are in the densest cells?
-    const cellPixels = Array.from(mouthGrid);
-    cellPixels.sort((a, b) => b - a);
-    const totalMouth = mouthPixels || 1;
-    // Top 25% of cells (8 cells, top 2) should hold a good chunk of mouth pixels
-    const topCells = Math.max(1, Math.floor(mouthGridCols * mouthGridRows * 0.25));
-    let topSum = 0;
-    for (let i = 0; i < topCells; i++) topSum += cellPixels[i];
-    const concentration = topSum / totalMouth;
-    // Uniform spread → concentration ≈ 0.25 (top 25% of cells hold 25%)
-    // Concentrated mouth → concentration > 0.5
-    // Score ramps from 0.3 to 0.7 concentration
-    const concScore = Math.min(Math.max((concentration - 0.3) / 0.4, 0), 1.0);
-
-    const presenceScore = Math.min(mouthRatio / 0.05, 1.0);
-    mouthScore = 20 * presenceScore * concScore;
+  const warmRatio = warmPixels / totalPixels;
+  let warmScore = 0;
+  if (warmRatio >= 0.1 && warmRatio <= 0.6) {
+    warmScore = 30;
+  } else if (warmRatio >= 0.02 && warmRatio < 0.1) {
+    warmScore = 30 * (warmRatio - 0.02) / 0.08;
+  } else if (warmRatio > 0.6) {
+    warmScore = 30 * Math.max(0, 1 - (warmRatio - 0.6) / 0.3);
   }
 
-  const totalScore = greenScore + eyeScore + mouthScore;
+  // =========================================================================
+  // Score 3: Muted tones (0-20) — low-saturation earthy colors (sfumato)
+  // =========================================================================
+  const mutedRatio = mutedPixels / totalPixels;
+  let mutedScore = 0;
+  if (mutedRatio >= 0.15) {
+    mutedScore = 20 * Math.min(mutedRatio / 0.4, 1.0);
+  }
+
+  const totalScore = darkScore + warmScore + mutedScore;
 
   return {
     totalScore: Math.round(totalScore * 100) / 100,
-    greenScore: Math.round(greenScore * 100) / 100,
-    eyeScore: Math.round(eyeScore * 100) / 100,
-    mouthScore: Math.round(mouthScore * 100) / 100,
-    greenRatio: Math.round(greenRatio * 1000) / 1000,
-    eyeBlobs: bestEyePair ? bestEyePair.length : 0,
-    mouthRatio: Math.round(mouthRatio * 1000) / 1000,
+    darkScore: Math.round(darkScore * 100) / 100,
+    warmScore: Math.round(warmScore * 100) / 100,
+    mutedScore: Math.round(mutedScore * 100) / 100,
+    darkRatio: Math.round(darkRatio * 1000) / 1000,
+    warmRatio: Math.round(warmRatio * 1000) / 1000,
+    mutedRatio: Math.round(mutedRatio * 1000) / 1000,
   };
 }
 
 // =============================================================================
 // CLIP initialization helper
 // =============================================================================
-const HEURISTIC_THRESHOLD = 20; // minimum heuristic score to advance to CLIP
+const HEURISTIC_THRESHOLD = 0; // all images go to CLIP (heuristic is just for tiebreaking)
 
 async function main(args) {
   const { rendersDir, topN } = parseArgs(args);
@@ -324,7 +167,7 @@ async function main(args) {
     process.exit(1);
   }
 
-  console.log(`=== QQL Pepe Scorer ===`);
+  console.log(`=== QQL Mona Lisa Scorer ===`);
   console.log(`Scoring ${files.length} images from ${rendersDir}\n`);
 
   // Pass 1: Heuristic scoring (all images) — fast pre-filter
@@ -398,11 +241,11 @@ async function main(args) {
   console.log("─".repeat(95));
   if (hasClip) {
     console.log(
-      "Rank  Similarity  BestRef                Heur    Green   Eyes    Mouth   File"
+      "Rank  Similarity  BestRef                Heur    Dark    Warm    Muted   File"
     );
   } else {
     console.log(
-      "Rank  Score   Green   Eyes    Mouth   Blobs  GreenRatio  File"
+      "Rank  Score   Dark    Warm    Muted   DarkR   WarmR   File"
     );
   }
   console.log("─".repeat(95));
@@ -414,18 +257,18 @@ async function main(args) {
           `${String(s.similarity ?? "-").padStart(10)}  ` +
           `${(s.bestRef ?? "-").padEnd(21).slice(0, 21)}  ` +
           `${String(s.totalScore).padStart(6)}  ` +
-          `${String(s.greenScore).padStart(6)}  ` +
-          `${String(s.eyeScore).padStart(6)}  ` +
-          `${String(s.mouthScore).padStart(6)}   ` +
+          `${String(s.darkScore).padStart(6)}  ` +
+          `${String(s.warmScore).padStart(6)}  ` +
+          `${String(s.mutedScore).padStart(6)}   ` +
           `${s.file.slice(0, 26)}`
       );
     } else {
       console.log(
         `#${String(i + 1).padStart(3)}  ${String(s.totalScore).padStart(6)}  ` +
-          `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
-          `${String(s.mouthScore).padStart(6)}  ` +
-          `${String(s.eyeBlobs || 0).padStart(5)}  ` +
-          `${String(s.greenRatio).padStart(10)}  ${s.file.slice(0, 30)}`
+          `${String(s.darkScore).padStart(6)}  ${String(s.warmScore).padStart(6)}  ` +
+          `${String(s.mutedScore).padStart(6)}  ` +
+          `${String(s.darkRatio).padStart(7)}  ` +
+          `${String(s.warmRatio).padStart(7)}  ${s.file.slice(0, 30)}`
       );
     }
   }

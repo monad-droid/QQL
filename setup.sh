@@ -1,10 +1,10 @@
 #!/bin/bash
-# Setup script for QQL Pepe Hunter
+# Setup script for QQL Mona Lisa Hunter
 # Clones required dependencies and installs them
 
 set -e
 
-echo "=== QQL Pepe Hunter Setup ==="
+echo "=== QQL Mona Lisa Hunter Setup ==="
 
 # Clone qql-headless (Node.js renderer)
 if [ ! -d "qql-headless" ]; then

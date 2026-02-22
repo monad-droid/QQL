@@ -1,5 +1,5 @@
 #!/bin/bash
-# QQL Pepe Hunter - Cloud Deploy Helper
+# QQL Mona Lisa Hunter - Cloud Deploy Helper
 #
 # SINGLE BATCH (one-shot):
 #   ./deploy.sh local 1000            Run locally via Docker
@@ -21,7 +21,7 @@
 set -e
 
 MODE=${1:-help}
-IMAGE_NAME="qql-pepe-hunter"
+IMAGE_NAME="qql-monalisa-hunter"
 
 build_image() {
   echo ">>> Building Docker image..."
@@ -100,13 +100,21 @@ run_daemon_remote() {
   ssh "$server" "mkdir -p ~/qql-hunter/{hall-of-fame,results,logs,references}"
   scp Dockerfile docker-compose.yml run.sh run-loop.sh \
       generate.js score.js clip-score.js \
+      download-references.sh \
       package.json package-lock.json \
       "$server":~/qql-hunter/
 
-  # Copy reference images if they exist
+  # Copy reference images if they exist locally
   if ls references/*.{png,jpg,jpeg,webp} 1>/dev/null 2>&1; then
     echo ">>> Uploading reference images..."
     scp references/*.{png,jpg,jpeg,webp} "$server":~/qql-hunter/references/ 2>/dev/null || true
+  fi
+
+  # Download reference images on server if none exist
+  REMOTE_REFS=$(ssh "$server" "ls ~/qql-hunter/references/*.{png,jpg,jpeg,webp} 2>/dev/null | wc -l")
+  if [ "$REMOTE_REFS" -eq 0 ] 2>/dev/null; then
+    echo ">>> No reference images found. Downloading on server..."
+    ssh "$server" "cd ~/qql-hunter && bash download-references.sh"
   fi
 
   # Build and start on the server
@@ -236,7 +244,7 @@ case "$MODE" in
     build_image
     ;;
   *)
-    echo "QQL Pepe Hunter - Cloud Deploy"
+    echo "QQL Mona Lisa Hunter - Cloud Deploy"
     echo ""
     echo "SINGLE BATCH (one-shot):"
     echo "  ./deploy.sh local [count] [top-n]       Run locally via Docker"
@@ -258,11 +266,11 @@ case "$MODE" in
     echo "CLOUD SETUP (cheapest options):"
     echo ""
     echo "  Hetzner (best value - €4.5/mo for 2 vCPU, 4GB):"
-    echo "    hcloud server create --name pepe --type cpx21 --image docker-ce"
+    echo "    hcloud server create --name monalisa --type cpx21 --image docker-ce"
     echo "    ./deploy.sh daemon-remote root@<ip>"
     echo ""
     echo "  DigitalOcean (\$12/mo for 2 vCPU, 2GB):"
-    echo "    doctl compute droplet create pepe --size s-2vcpu-2gb --image docker-20-04"
+    echo "    doctl compute droplet create monalisa --size s-2vcpu-2gb --image docker-20-04"
     echo "    ./deploy.sh daemon-remote root@<ip>"
     echo ""
     echo "  AWS Spot (cheapest for big batches - ~\$0.06/hr for 4 vCPU):"
