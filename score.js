@@ -10,8 +10,7 @@ const { createCanvas, loadImage } = require("canvas");
 //     1. Green dominance - How much of the image is green (Pepe's face)
 //     2. Eye detection   - Two light/white circular regions in upper half
 //     3. Symmetry        - Bilateral symmetry (Pepe's face is symmetric)
-//     4. Dark centers    - Dark regions inside light regions (pupils)
-//     5. Mouth detection - Brown/warm tones in the lower third
+//     4. Mouth detection - Brown/warm tones in the lower third
 //
 //   Pass 2 (SSIM reference comparison - top candidates only):
 //     Compares against reference Pepe images in ./references/
@@ -75,9 +74,6 @@ function isLight(h, s, b) {
   return b >= 75 && s <= 30;
 }
 
-function isDark(h, s, b) {
-  return b <= 30;
-}
 
 // Pepe mouth: warm/brown tones (hue 10-45, moderate sat, moderate bright)
 function isMouthColor(h, s, b) {
@@ -97,7 +93,6 @@ async function scoreImage(imagePath) {
   const totalPixels = w * h;
   let greenPixels = 0;
   let lightPixelsTop = 0;
-  let darkPixelsTop = 0;
   let lightPixelsBottom = 0;
 
   // Split image into regions
@@ -107,7 +102,6 @@ async function scoreImage(imagePath) {
 
   let greenTop = 0, greenBottom = 0;
   let lightTopLeft = 0, lightTopRight = 0;
-  let darkTopLeft = 0, darkTopRight = 0;
   let mouthPixels = 0;
   let mouthLeft = 0, mouthRight = 0;
 
@@ -130,11 +124,6 @@ async function scoreImage(imagePath) {
           lightPixelsTop++;
           if (x < midX) lightTopLeft++;
           else lightTopRight++;
-        }
-        if (isDark(hsb.h, hsb.s, hsb.b)) {
-          darkPixelsTop++;
-          if (x < midX) darkTopLeft++;
-          else darkTopRight++;
         }
       } else {
         if (isLight(hsb.h, hsb.s, hsb.b)) lightPixelsBottom++;
@@ -175,17 +164,7 @@ async function scoreImage(imagePath) {
     eyeScore = 15 * Math.min(minEyeRatio / 0.1, 1.0) + 10 * eyeSymmetry;
   }
 
-  // Score 3: Dark pupils in upper half (0-20 points)
-  const darkTopRatio = darkPixelsTop / topPixels;
-  let pupilScore = 0;
-  if (darkTopRatio > 0.01 && darkTopRatio < 0.2) {
-    const darkLeftRatio = darkTopLeft / quadPixels;
-    const darkRightRatio = darkTopRight / quadPixels;
-    const darkSymmetry =
-      Math.min(darkLeftRatio, darkRightRatio) /
-      (Math.max(darkLeftRatio, darkRightRatio) || 0.001);
-    pupilScore = 12 * Math.min(darkTopRatio / 0.05, 1.0) + 8 * darkSymmetry;
-  }
+  // Score 3: (Removed — pupil detection not needed; white eyes without pupils are fine)
 
   // Score 4: Bilateral symmetry (0-15 points)
   let symmetryDiff = 0;
@@ -215,13 +194,12 @@ async function scoreImage(imagePath) {
     mouthScore = 10 * Math.min(mouthRatio / 0.15, 1.0) + 5 * mouthSymmetry;
   }
 
-  const totalScore = greenScore + eyeScore + pupilScore + symmetryScore + mouthScore;
+  const totalScore = greenScore + eyeScore + symmetryScore + mouthScore;
 
   return {
     totalScore: Math.round(totalScore * 100) / 100,
     greenScore: Math.round(greenScore * 100) / 100,
     eyeScore: Math.round(eyeScore * 100) / 100,
-    pupilScore: Math.round(pupilScore * 100) / 100,
     symmetryScore: Math.round(symmetryScore * 100) / 100,
     mouthScore: Math.round(mouthScore * 100) / 100,
     greenRatio: Math.round(greenRatio * 1000) / 1000,
@@ -390,11 +368,11 @@ async function main(args) {
   console.log("─".repeat(110));
   if (hasRefs) {
     console.log(
-      "Rank  Combined  Heuristic  SSIM    Green   Eyes    Pupils  Symmetry  Mouth   File"
+      "Rank  Combined  Heuristic  SSIM    Green   Eyes    Symmetry  Mouth   File"
     );
   } else {
     console.log(
-      "Rank  Score   Green   Eyes    Pupils  Symmetry  Mouth   GreenRatio  File"
+      "Rank  Score   Green   Eyes    Symmetry  Mouth   GreenRatio  File"
     );
   }
   console.log("─".repeat(110));
@@ -405,14 +383,14 @@ async function main(args) {
         `#${String(i + 1).padStart(3)}  ${String(s.combinedScore || 0).padStart(8)}  ` +
           `${String(s.totalScore).padStart(9)}  ${String(s.ssimScore || 0).padStart(5)}  ` +
           `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
-          `${String(s.pupilScore).padStart(6)}  ${String(s.symmetryScore).padStart(8)}  ` +
+          `${String(s.symmetryScore).padStart(8)}  ` +
           `${String(s.mouthScore).padStart(6)}  ${s.file.slice(0, 30)}`
       );
     } else {
       console.log(
         `#${String(i + 1).padStart(3)}  ${String(s.totalScore).padStart(6)}  ` +
           `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
-          `${String(s.pupilScore).padStart(6)}  ${String(s.symmetryScore).padStart(8)}  ` +
+          `${String(s.symmetryScore).padStart(8)}  ` +
           `${String(s.mouthScore).padStart(6)}  ` +
           `${String(s.greenRatio).padStart(10)}  ${s.file.slice(0, 30)}`
       );
