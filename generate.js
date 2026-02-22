@@ -25,7 +25,8 @@ const random = require("./qql-headless/src/vendor/qql-safe-random.min.js");
 //   - Bullseye rings on: Multiple concentric rings = more eye-like shapes.
 //   - Wild size variety: Need both large rings (eyes) and small rings (detail).
 //   - Thick rings: Visible, prominent shapes.
-//   - Everything else RANDOM: Flow field, structure, spacing, margin, ring size
+//   - Wide margin: Pushes circles inward, creating a face-shaped boundary.
+//   - Everything else RANDOM: Flow field, structure, spacing, ring size
 //     are where the 1-in-a-million magic happens.
 // =============================================================================
 const FIXED_TRAITS = {
@@ -41,7 +42,7 @@ const FIXED_TRAITS = {
   // Left random for maximum exploration:
   structure: null,
   flowField: null,
-  margin: null,
+  margin: "Wide",
   ringSize: null,
   spacing: null,
 };
