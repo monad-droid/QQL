@@ -95,26 +95,23 @@ run_daemon_remote() {
 
   echo ">>> Deploying 24/7 mode to $server"
 
-  # Push image
-  echo ">>> Building and exporting Docker image..."
-  build_image
-  docker save "$IMAGE_NAME" | gzip > /tmp/qql-image.tar.gz
-  echo ">>> Uploading to $server ($(du -h /tmp/qql-image.tar.gz | cut -f1))..."
-  scp /tmp/qql-image.tar.gz "$server":/tmp/
-  rm /tmp/qql-image.tar.gz
-
-  # Push compose file and scripts
-  echo ">>> Uploading config files..."
+  # Upload source files to build on the server (no local Docker needed)
+  echo ">>> Uploading project files to server..."
   ssh "$server" "mkdir -p ~/qql-hunter/{hall-of-fame,results,logs,references}"
-  scp docker-compose.yml run-loop.sh "$server":~/qql-hunter/
+  scp Dockerfile docker-compose.yml run.sh run-loop.sh \
+      generate.js score.js clip-score.js \
+      package.json package-lock.json \
+      "$server":~/qql-hunter/
 
-  # Load image and start
-  echo ">>> Starting on server..."
-  ssh "$server" "
-    docker load < /tmp/qql-image.tar.gz && rm /tmp/qql-image.tar.gz
-    cd ~/qql-hunter
-    docker compose up -d
-  "
+  # Copy reference images if they exist
+  if ls references/*.{png,jpg,jpeg,webp} 1>/dev/null 2>&1; then
+    echo ">>> Uploading reference images..."
+    scp references/*.{png,jpg,jpeg,webp} "$server":~/qql-hunter/references/ 2>/dev/null || true
+  fi
+
+  # Build and start on the server
+  echo ">>> Building Docker image on server (this takes a few minutes on first run)..."
+  ssh "$server" "cd ~/qql-hunter && docker compose up -d --build"
 
   echo ""
   echo ">>> Hunter is running 24/7 on $server!"
