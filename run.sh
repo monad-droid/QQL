@@ -10,7 +10,7 @@ COUNT=${1:-500}
 TOP_N=${2:-20}
 RENDERS_DIR="renders"
 RESULTS_DIR="results"
-CHUNK=20
+CHUNK=5
 
 echo "============================================"
 echo "  QQL Pepe Hunter (CLIP-powered)"
