@@ -7,10 +7,9 @@ const { createCanvas, loadImage } = require("canvas");
 //
 // Two-pass scoring system:
 //   Pass 1 (Heuristic - all images, free & fast):
-//     1. Green dominance - How much of the image is green (Pepe's face)
-//     2. Eye detection   - Two light/white circular regions in upper half
-//     3. Symmetry        - Bilateral symmetry (Pepe's face is symmetric)
-//     4. Mouth detection - Brown/warm tones in the lower third
+//     1. Green dominance (0-30) - How much of the image is green (Pepe's face)
+//     2. Eye detection   (0-30) - Light/white regions in both sides of upper half
+//     3. Mouth detection (0-20) - Warm/dark tones in the lower portion
 //
 //   Pass 2 (SSIM reference comparison - top candidates only):
 //     Compares against reference Pepe images in ./references/
@@ -144,20 +143,21 @@ async function scoreImage(imagePath) {
   const quadPixels = midY * midX;
   const lowerThirdPixels = (h - lowerThirdY) * w;
 
-  // Score 1: Green dominance (0-25 points)
+  // Score 1: Green dominance (0-30 points)
   // A Pepe face with background/eyes/outlines realistically has 15-40% green.
   // Full marks at 20%+, ramp up from 8-20%, penalize above 75% (all green = no face).
   const greenRatio = greenPixels / totalPixels;
   let greenScore = 0;
   if (greenRatio >= 0.2 && greenRatio <= 0.75) {
-    greenScore = 25;
+    greenScore = 30;
   } else if (greenRatio >= 0.08 && greenRatio < 0.2) {
-    greenScore = 25 * (greenRatio - 0.08) / 0.12;
+    greenScore = 30 * (greenRatio - 0.08) / 0.12;
   } else if (greenRatio > 0.75) {
-    greenScore = 25 * Math.max(0, 1 - (greenRatio - 0.75) / 0.2);
+    greenScore = 30 * Math.max(0, 1 - (greenRatio - 0.75) / 0.2);
   }
 
-  // Score 2: Eye regions - light spots in upper half (0-25 points)
+  // Score 2: Eye regions - light spots in upper half (0-30 points)
+  // Just needs light regions in both top quadrants (two eyes)
   const lightTopRatio = lightPixelsTop / topPixels;
   const lightTopLeftRatio = lightTopLeft / quadPixels;
   const lightTopRightRatio = lightTopRight / quadPixels;
@@ -166,48 +166,23 @@ async function scoreImage(imagePath) {
   const minEyeRatio = Math.min(lightTopLeftRatio, lightTopRightRatio);
   const maxEyeRatio = Math.max(lightTopLeftRatio, lightTopRightRatio);
   if (minEyeRatio > 0.03 && maxEyeRatio < 0.5) {
-    const eyeSymmetry = minEyeRatio / (maxEyeRatio || 0.001);
-    eyeScore = 15 * Math.min(minEyeRatio / 0.1, 1.0) + 10 * eyeSymmetry;
+    eyeScore = 30 * Math.min(minEyeRatio / 0.1, 1.0);
   }
 
-  // Score 3: (Removed — pupil detection not needed; white eyes without pupils are fine)
-
-  // Score 4: Bilateral symmetry (0-15 points)
-  let symmetryDiff = 0;
-  const sampleStep = 4;
-  let sampleCount = 0;
-  for (let y = 0; y < h; y += sampleStep) {
-    for (let x = 0; x < midX; x += sampleStep) {
-      const mirrorX = w - 1 - x;
-      const idx1 = (y * w + x) * 4;
-      const idx2 = (y * w + mirrorX) * 4;
-      const dr = Math.abs(data[idx1] - data[idx2]);
-      const dg = Math.abs(data[idx1 + 1] - data[idx2 + 1]);
-      const db = Math.abs(data[idx1 + 2] - data[idx2 + 2]);
-      symmetryDiff += (dr + dg + db) / (3 * 255);
-      sampleCount++;
-    }
-  }
-  const avgSymmetryDiff = symmetryDiff / sampleCount;
-  const symmetryScore = 15 * Math.max(0, 1 - avgSymmetryDiff * 1.2);
-
-  // Score 5: Mouth region - warm tones or dark lines in bottom 75% (0-15 points)
+  // Score 3: Mouth region - warm tones or dark lines in bottom 75% (0-20 points)
   const mouthRegionPixels = (h - Math.floor(h * 0.25)) * w;
   const mouthRatio = mouthPixels / mouthRegionPixels;
   let mouthScore = 0;
   if (mouthRatio > 0.02 && mouthRatio < 0.6) {
-    const mouthSymmetry =
-      Math.min(mouthLeft, mouthRight) / (Math.max(mouthLeft, mouthRight) || 1);
-    mouthScore = 10 * Math.min(mouthRatio / 0.05, 1.0) + 5 * mouthSymmetry;
+    mouthScore = 20 * Math.min(mouthRatio / 0.05, 1.0);
   }
 
-  const totalScore = greenScore + eyeScore + symmetryScore + mouthScore;
+  const totalScore = greenScore + eyeScore + mouthScore;
 
   return {
     totalScore: Math.round(totalScore * 100) / 100,
     greenScore: Math.round(greenScore * 100) / 100,
     eyeScore: Math.round(eyeScore * 100) / 100,
-    symmetryScore: Math.round(symmetryScore * 100) / 100,
     mouthScore: Math.round(mouthScore * 100) / 100,
     greenRatio: Math.round(greenRatio * 1000) / 1000,
     lightTopRatio: Math.round(lightTopRatio * 1000) / 1000,
@@ -372,17 +347,17 @@ async function main(args) {
   // Print top results
   const scoreKey = hasRefs ? "Combined" : "Score";
   console.log(`Top ${Math.min(topN, scores.length)} results:`);
-  console.log("─".repeat(110));
+  console.log("─".repeat(90));
   if (hasRefs) {
     console.log(
-      "Rank  Combined  Heuristic  SSIM    Green   Eyes    Symmetry  Mouth   File"
+      "Rank  Combined  Heuristic  SSIM    Green   Eyes    Mouth   File"
     );
   } else {
     console.log(
-      "Rank  Score   Green   Eyes    Symmetry  Mouth   GreenRatio  File"
+      "Rank  Score   Green   Eyes    Mouth   GreenRatio  File"
     );
   }
-  console.log("─".repeat(110));
+  console.log("─".repeat(90));
   for (let i = 0; i < Math.min(topN, scores.length); i++) {
     const s = scores[i];
     if (hasRefs) {
@@ -390,20 +365,18 @@ async function main(args) {
         `#${String(i + 1).padStart(3)}  ${String(s.combinedScore || 0).padStart(8)}  ` +
           `${String(s.totalScore).padStart(9)}  ${String(s.ssimScore || 0).padStart(5)}  ` +
           `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
-          `${String(s.symmetryScore).padStart(8)}  ` +
           `${String(s.mouthScore).padStart(6)}  ${s.file.slice(0, 30)}`
       );
     } else {
       console.log(
         `#${String(i + 1).padStart(3)}  ${String(s.totalScore).padStart(6)}  ` +
           `${String(s.greenScore).padStart(6)}  ${String(s.eyeScore).padStart(6)}  ` +
-          `${String(s.symmetryScore).padStart(8)}  ` +
           `${String(s.mouthScore).padStart(6)}  ` +
           `${String(s.greenRatio).padStart(10)}  ${s.file.slice(0, 30)}`
       );
     }
   }
-  console.log("─".repeat(110));
+  console.log("─".repeat(90));
 
   // Copy top-N to results directory
   const resultsDir = path.join(path.dirname(rendersDir), "results");
