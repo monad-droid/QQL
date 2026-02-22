@@ -11,7 +11,7 @@ TOP_N=${2:-20}
 RENDERS_DIR="renders"
 RESULTS_DIR="results"
 CHUNK=5
-WORKERS=4
+WORKERS=2
 
 echo "============================================"
 echo "  QQL Mona Lisa Hunter (CLIP-powered)"
@@ -26,7 +26,7 @@ rm -rf "$RENDERS_DIR"/* "$RESULTS_DIR"/*
 
 # Step 1: Generate in parallel chunks to avoid OOM (renderer leaks memory)
 # Each worker generates CHUNK images then exits (frees leaked memory).
-# 4 workers to saturate all 4 vCPUs. ~1.5GB heap each fits in 8GB.
+# 2 workers — renderer only uses ~25% CPU each, so 2 is a safe improvement.
 echo ">>> Step 1/2: Generating $COUNT images ($WORKERS parallel workers)..."
 START=$(date +%s)
 GENERATED=0
@@ -36,7 +36,7 @@ while [ $GENERATED -lt $COUNT ]; do
     if [ $GENERATED -lt $COUNT ]; then
       REMAINING=$((COUNT - GENERATED))
       THIS_CHUNK=$((REMAINING < CHUNK ? REMAINING : CHUNK))
-      node --max-old-space-size=1536 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED" &
+      node --max-old-space-size=2048 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED" &
       PIDS="$PIDS $!"
       GENERATED=$((GENERATED + THIS_CHUNK))
     fi
