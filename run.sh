@@ -10,12 +10,11 @@ COUNT=${1:-500}
 TOP_N=${2:-20}
 RENDERS_DIR="renders"
 RESULTS_DIR="results"
-CHUNK=5
-WORKERS=2
+CHUNK=10
 
 echo "============================================"
 echo "  QQL Mona Lisa Hunter (CLIP-powered)"
-echo "  Generating: $COUNT images ($WORKERS workers, chunks of $CHUNK)"
+echo "  Generating: $COUNT images (chunks of $CHUNK)"
 echo "  Keeping top: $TOP_N results"
 echo "  Scoring: Heuristic pre-filter → CLIP"
 echo "============================================"
@@ -24,27 +23,17 @@ echo ""
 # Clean previous run
 rm -rf "$RENDERS_DIR"/* "$RESULTS_DIR"/*
 
-# Step 1: Generate in parallel chunks to avoid OOM (renderer leaks memory)
-# Each worker generates CHUNK images then exits (frees leaked memory).
-# Multiple workers run simultaneously to use all CPU cores.
-echo ">>> Step 1/2: Generating $COUNT images ($WORKERS parallel workers)..."
+# Step 1: Generate in chunks to avoid OOM (renderer leaks memory)
+# Each chunk spawns a fresh Node process that exits when done (frees leaked memory).
+# Single worker — server has 1 vCPU so parallelism gives no benefit.
+echo ">>> Step 1/2: Generating $COUNT images..."
 START=$(date +%s)
 GENERATED=0
 while [ $GENERATED -lt $COUNT ]; do
-  PIDS=""
-  for W in $(seq 1 $WORKERS); do
-    if [ $GENERATED -lt $COUNT ]; then
-      REMAINING=$((COUNT - GENERATED))
-      THIS_CHUNK=$((REMAINING < CHUNK ? REMAINING : CHUNK))
-      node --max-old-space-size=3072 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED" &
-      PIDS="$PIDS $!"
-      GENERATED=$((GENERATED + THIS_CHUNK))
-    fi
-  done
-  # Wait for all workers in this round to finish
-  for PID in $PIDS; do
-    wait $PID || true
-  done
+  REMAINING=$((COUNT - GENERATED))
+  THIS_CHUNK=$((REMAINING < CHUNK ? REMAINING : CHUNK))
+  node --max-old-space-size=3072 generate.js "$RENDERS_DIR" "$THIS_CHUNK" "$GENERATED"
+  GENERATED=$((GENERATED + THIS_CHUNK))
 done
 GEN_END=$(date +%s)
 echo ""
