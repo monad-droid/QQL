@@ -1,0 +1,17 @@
+# Cloned dependency repos (install via setup.sh)
+qql-headless/
+qqlrs/
+
+# Generated outputs
+renders/
+results/
+scores/
+
+# Node
+node_modules/
+
+# Rust build artifacts
+target/
+
+# OS files
+.DS_Store
