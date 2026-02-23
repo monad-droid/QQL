@@ -30,9 +30,21 @@ const heuristicThreshold = 20;
 
 // Text prompts for CLIP text-to-image scoring
 const textPrompts = [
+  // Direct Pepe references
   "Pepe the frog",
   "Pepe the frog meme, green frog face",
   "green frog with big eyes and wide mouth",
+  // Abstract art descriptions of frog-face patterns
+  "abstract green circles resembling a frog face with two white eyes",
+  "green circular pattern with two symmetrical white dots like eyes",
+  "generative art with green tones forming a face shape, two bright circles as eyes",
+  "abstract frog portrait made of concentric circles and rings",
+  "green and white bullseye pattern resembling cartoon frog eyes",
+  // Color/composition focused
+  "muted green and cream abstract face with large round eyes",
+  "earthy green geometric art with two prominent white circular shapes",
+  "green abstract creature face with wide set round eyes",
+  "sage green and ivory pattern suggesting a smiling amphibian face",
 ];
 
 // Reference image URLs for download-references.sh
