@@ -1,11 +1,15 @@
 #!/bin/bash
-# QQL Mona Lisa Hunter - Full pipeline
-# Usage: ./run.sh [count] [top-n]
+# QQL Art Hunter - Full pipeline
+# Usage: TARGET=monalisa ./run.sh [count] [top-n]
 #   count: number of images to generate (default: 500)
 #   top-n: number of top results to keep (default: 20)
+#
+# TARGET env var selects the hunt target (default: pepe).
+# Available targets: pepe, monalisa
 
 set -e
 
+export TARGET="${TARGET:-pepe}"
 COUNT=${1:-500}
 TOP_N=${2:-20}
 RENDERS_DIR="renders"
@@ -14,7 +18,7 @@ CHUNK=5
 WORKERS=2
 
 echo "============================================"
-echo "  QQL Mona Lisa Hunter (CLIP-powered)"
+echo "  QQL ${TARGET} Hunter (CLIP-powered)"
 echo "  Generating: $COUNT images ($WORKERS workers, chunks of $CHUNK)"
 echo "  Keeping top: $TOP_N results"
 echo "  Scoring: Heuristic pre-filter → CLIP"
@@ -25,8 +29,6 @@ echo ""
 rm -rf "$RENDERS_DIR"/* "$RESULTS_DIR"/*
 
 # Step 1: Generate in parallel chunks to avoid OOM (renderer leaks memory)
-# Each worker generates CHUNK images then exits (frees leaked memory).
-# 2 workers — renderer only uses ~25% CPU each, so 2 is a safe improvement.
 echo ">>> Step 1/2: Generating $COUNT images ($WORKERS parallel workers)..."
 START=$(date +%s)
 GENERATED=0

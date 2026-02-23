@@ -1,9 +1,14 @@
-## QQL Mona Lisa Hunter - 24/7 Cloud Deployment
+## QQL Art Hunter - 24/7 Cloud Deployment
+##
+## Default target: pepe (set TARGET env var to change)
 ##
 ## Quick start:
-##   docker compose up -d          # start hunting in background
+##   docker compose up -d          # start hunting (pepe by default)
 ##   docker compose logs -f        # watch progress
 ##   docker compose down           # stop
+##
+## Switch target:
+##   TARGET=monalisa docker compose up -d --build
 ##
 ## Check results:
 ##   ls hall-of-fame/              # all-time best images
@@ -15,12 +20,14 @@ services:
     build: .
     entrypoint: ["./run-loop.sh"]
     command: ["100", "20", "0.85"]   # batch-size, top-n, min-similarity
+    environment:
+      - TARGET=${TARGET:-pepe}
     restart: unless-stopped
     volumes:
       - ./hall-of-fame:/app/hall-of-fame   # persisted best results
       - ./results:/app/results             # current batch results
       - ./logs:/app/logs                   # batch logs
-      - ./references:/app/references       # Mona Lisa reference images
+      - ./references:/app/references       # reference images for CLIP
     deploy:
       resources:
         limits:

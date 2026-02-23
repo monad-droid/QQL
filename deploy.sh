@@ -1,5 +1,8 @@
 #!/bin/bash
-# QQL Mona Lisa Hunter - Cloud Deploy Helper
+# QQL Art Hunter - Cloud Deploy Helper
+#
+# Set TARGET env var to choose hunt target (default: pepe).
+# Available targets: pepe, monalisa
 #
 # SINGLE BATCH (one-shot):
 #   ./deploy.sh local 1000            Run locally via Docker
@@ -21,10 +24,11 @@
 set -e
 
 MODE=${1:-help}
-IMAGE_NAME="qql-monalisa-hunter"
+export TARGET="${TARGET:-pepe}"
+IMAGE_NAME="qql-${TARGET}-hunter"
 
 build_image() {
-  echo ">>> Building Docker image..."
+  echo ">>> Building Docker image ($IMAGE_NAME, target=$TARGET)..."
   docker build -t "$IMAGE_NAME" .
   echo ">>> Image built: $IMAGE_NAME"
 }
@@ -32,13 +36,15 @@ build_image() {
 run_local() {
   local count=${1:-500}
   local top_n=${2:-20}
-  echo ">>> Running locally: $count images, top $top_n"
+  echo ">>> Running locally: $count images, top $top_n (target=$TARGET)"
   mkdir -p results
   docker run --rm \
+    -e TARGET="$TARGET" \
     -v "$(pwd)/results:/app/results" \
     -v "$(pwd)/references:/app/references" 2>/dev/null \
     "$IMAGE_NAME" "$count" "$top_n" \
     || docker run --rm \
+    -e TARGET="$TARGET" \
     -v "$(pwd)/results:/app/results" \
     "$IMAGE_NAME" "$count" "$top_n"
   echo ""
@@ -50,7 +56,7 @@ run_remote() {
   local count=${2:-500}
   local top_n=${3:-20}
 
-  echo ">>> Deploying to $server"
+  echo ">>> Deploying to $server (target=$TARGET)"
 
   # Save image as tarball, push to server
   echo ">>> Exporting Docker image..."
@@ -64,7 +70,7 @@ run_remote() {
   ssh "$server" "docker load < /tmp/qql-image.tar.gz && rm /tmp/qql-image.tar.gz"
 
   echo ">>> Running pipeline on server ($count images, top $top_n)..."
-  ssh "$server" "mkdir -p ~/qql-results && docker run --rm -v ~/qql-results:/app/results $IMAGE_NAME $count $top_n"
+  ssh "$server" "mkdir -p ~/qql-results && docker run --rm -e TARGET=$TARGET -v ~/qql-results:/app/results $IMAGE_NAME $count $top_n"
 
   # Pull results back
   echo ">>> Downloading results..."
@@ -77,7 +83,7 @@ run_remote() {
 }
 
 run_daemon() {
-  echo ">>> Starting 24/7 continuous mode..."
+  echo ">>> Starting 24/7 continuous mode (target=$TARGET)..."
   mkdir -p hall-of-fame results logs references
   docker compose up -d --build
   echo ""
@@ -93,16 +99,17 @@ run_daemon() {
 run_daemon_remote() {
   local server=$1
 
-  echo ">>> Deploying 24/7 mode to $server"
+  echo ">>> Deploying 24/7 mode to $server (target=$TARGET)"
 
   # Upload source files to build on the server (no local Docker needed)
   echo ">>> Uploading project files to server..."
-  ssh "$server" "mkdir -p ~/qql-hunter/{hall-of-fame,results,logs,references}"
+  ssh "$server" "mkdir -p ~/qql-hunter/{hall-of-fame,results,logs,references,targets}"
   scp Dockerfile docker-compose.yml run.sh run-loop.sh \
       generate.js score.js clip-score.js \
       download-references.sh \
       package.json package-lock.json \
       "$server":~/qql-hunter/
+  scp targets/*.js "$server":~/qql-hunter/targets/
 
   # Copy reference images if they exist locally
   if ls references/*.{png,jpg,jpeg,webp} 1>/dev/null 2>&1; then
@@ -114,15 +121,15 @@ run_daemon_remote() {
   REMOTE_REFS=$(ssh "$server" "ls ~/qql-hunter/references/*.{png,jpg,jpeg,webp} 2>/dev/null | wc -l")
   if [ "$REMOTE_REFS" -eq 0 ] 2>/dev/null; then
     echo ">>> No reference images found. Downloading on server..."
-    ssh "$server" "cd ~/qql-hunter && bash download-references.sh references"
+    ssh "$server" "cd ~/qql-hunter && TARGET=$TARGET bash download-references.sh references"
   fi
 
   # Build and start on the server
   echo ">>> Building Docker image on server (this takes a few minutes on first run)..."
-  ssh "$server" "cd ~/qql-hunter && docker compose up -d --build"
+  ssh "$server" "cd ~/qql-hunter && TARGET=$TARGET docker compose up -d --build"
 
   echo ""
-  echo ">>> Hunter is running 24/7 on $server!"
+  echo ">>> Hunter is running 24/7 on $server! (target=$TARGET)"
   echo ""
   echo "  Watch logs:       ssh $server 'cd ~/qql-hunter && docker compose logs -f'"
   echo "  Check stats:      ssh $server 'cat ~/qql-hunter/hall-of-fame/_stats.json'"
@@ -244,7 +251,10 @@ case "$MODE" in
     build_image
     ;;
   *)
-    echo "QQL Mona Lisa Hunter - Cloud Deploy"
+    echo "QQL Art Hunter - Cloud Deploy (target=$TARGET)"
+    echo ""
+    echo "Set TARGET env var to choose target (default: pepe)."
+    echo "Available: pepe, monalisa"
     echo ""
     echo "SINGLE BATCH (one-shot):"
     echo "  ./deploy.sh local [count] [top-n]       Run locally via Docker"
@@ -263,23 +273,9 @@ case "$MODE" in
     echo "  ./deploy.sh logs                         Tail local daemon logs"
     echo "  ./deploy.sh build                        Just build the image"
     echo ""
-    echo "CLOUD SETUP (cheapest options):"
-    echo ""
-    echo "  Hetzner (best value - €4.5/mo for 2 vCPU, 4GB):"
-    echo "    hcloud server create --name monalisa --type cpx21 --image docker-ce"
-    echo "    ./deploy.sh daemon-remote root@<ip>"
-    echo ""
-    echo "  DigitalOcean (\$12/mo for 2 vCPU, 2GB):"
-    echo "    doctl compute droplet create monalisa --size s-2vcpu-2gb --image docker-20-04"
-    echo "    ./deploy.sh daemon-remote root@<ip>"
-    echo ""
-    echo "  AWS Spot (cheapest for big batches - ~\$0.06/hr for 4 vCPU):"
-    echo "    aws ec2 run-instances --instance-type c5.xlarge \\"
-    echo "      --instance-market-options '{\"MarketType\":\"spot\"}' \\"
-    echo "      --image-id ami-xxxxx --key-name your-key"
-    echo "    ./deploy.sh daemon-remote ubuntu@<ip>"
-    echo ""
-    echo "  Any VPS with Docker + SSH:"
-    echo "    ./deploy.sh daemon-remote user@your-server"
+    echo "EXAMPLES:"
+    echo "  ./deploy.sh daemon                         # Hunt Pepe (default)"
+    echo "  TARGET=monalisa ./deploy.sh daemon          # Hunt Mona Lisa"
+    echo "  TARGET=monalisa ./deploy.sh local 100       # Quick Mona Lisa test"
     ;;
 esac

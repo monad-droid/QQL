@@ -26,6 +26,7 @@ RUN git clone https://github.com/qql-art/qql-headless.git \
 
 # Copy application code
 COPY generate.js score.js clip-score.js run.sh run-loop.sh download-references.sh ./
+COPY targets/ ./targets/
 
 # Create directories (references may be empty but must exist for COPY)
 RUN mkdir -p renders results references hall-of-fame logs

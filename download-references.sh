@@ -1,13 +1,15 @@
 #!/bin/bash
-# Download reference images for CLIP scoring (Mona Lisa)
+# Download reference images for CLIP scoring.
+# Uses TARGET env var to decide which references to fetch (default: pepe).
 # Run this once on any machine with internet access.
 #
-# Downloads multiple versions/crops of the Mona Lisa for better CLIP matching:
-#   1. Full painting (high quality, from Wikimedia Commons)
-#   2. Face detail crop (from Wikimedia Commons)
+# Usage:
+#   TARGET=pepe ./download-references.sh
+#   TARGET=monalisa ./download-references.sh
 
 set -e
 
+TARGET="${TARGET:-pepe}"
 REFS_DIR="${1:-references}"
 mkdir -p "$REFS_DIR"
 
@@ -29,17 +31,19 @@ download() {
   fi
 }
 
-echo ">>> Downloading Mona Lisa reference images..."
+echo ">>> Downloading reference images for target: $TARGET"
 
-# Full painting — high quality
-download \
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/800px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg" \
-  "$REFS_DIR/mona-lisa-full.jpg"
-
-# Face detail
-download \
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/400px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg" \
-  "$REFS_DIR/mona-lisa-small.jpg"
+# Use Node to read reference URLs from the target config
+node -e "
+  process.env.TARGET = '$TARGET';
+  const { loadTarget } = require('./targets');
+  const t = loadTarget();
+  for (const ref of t.referenceUrls || []) {
+    console.log(ref.url + ' ' + ref.name);
+  }
+" 2>/dev/null | while read -r url name; do
+  download "$url" "$REFS_DIR/$name"
+done
 
 echo ""
 echo ">>> Reference images saved to $REFS_DIR/"

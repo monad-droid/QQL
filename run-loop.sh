@@ -1,13 +1,15 @@
 #!/bin/bash
-# QQL Mona Lisa Hunter - Continuous Loop Mode
+# QQL Art Hunter - Continuous Loop Mode
 #
 # Runs the pipeline in an infinite loop, accumulating the best results
 # across all runs. Designed for 24/7 cloud operation.
 #
-# Usage: ./run-loop.sh [batch-size] [top-n] [min-similarity]
+# Usage: TARGET=monalisa ./run-loop.sh [batch-size] [top-n] [min-similarity]
 #   batch-size:      images per batch (default: 500)
 #   top-n:           top results to keep per batch (default: 20)
 #   min-similarity:  minimum CLIP similarity to save to hall-of-fame (default: 0.85)
+#
+# TARGET env var selects the hunt target (default: pepe).
 #
 # Output:
 #   results/         current batch top results (overwritten each batch)
@@ -16,6 +18,7 @@
 
 set -e
 
+export TARGET="${TARGET:-pepe}"
 BATCH_SIZE=${1:-500}
 TOP_N=${2:-20}
 MIN_SIM=${3:-0.85}
@@ -40,7 +43,7 @@ INIT
 fi
 
 echo "============================================"
-echo "  QQL Mona Lisa Hunter - CONTINUOUS MODE"
+echo "  QQL ${TARGET} Hunter - CONTINUOUS MODE"
 echo "  Batch size:      $BATCH_SIZE images"
 echo "  Keep per batch:  $TOP_N"
 echo "  Hall-of-fame:    similarity >= $MIN_SIM"
