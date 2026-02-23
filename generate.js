@@ -17,9 +17,9 @@ function getTraits() {
     : targetConfig.traits;
 }
 
-// 400px is enough for CLIP scoring (which uses 224px internally).
+// 256px is plenty for CLIP scoring (which resizes to 224px internally).
 // Re-render winners at full resolution later.
-const IMAGE_WIDTH = 400;
+const IMAGE_WIDTH = 256;
 
 const DEFAULT_ADDRESS = "0xA4620Fc13546462e817Fa49e44F04330872495a7";
 
