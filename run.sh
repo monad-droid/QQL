@@ -21,7 +21,7 @@ echo "============================================"
 echo "  QQL ${TARGET} Hunter (CLIP-powered)"
 echo "  Generating: $COUNT images ($WORKERS workers, chunks of $CHUNK)"
 echo "  Keeping top: $TOP_N results"
-echo "  Scoring: Heuristic pre-filter → CLIP"
+echo "  Scoring: Heuristic + CLIP (all images)"
 echo "============================================"
 echo ""
 

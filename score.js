@@ -9,10 +9,10 @@ const { initCLIP, scoreCLIP } = require("./clip-score");
 // heuristic scorer and table formatting to use from ./targets/<name>.js.
 //
 // Two-pass scoring system:
-//   Pass 1 (Heuristic - all images, fast pre-filter):
-//     Target-specific pixel analysis. Threshold set per target.
+//   Pass 1 (Heuristic - all images):
+//     Target-specific pixel analysis.
 //
-//   Pass 2 (CLIP semantic comparison - candidates only):
+//   Pass 2 (CLIP semantic comparison - all images):
 //     Image-to-image similarity against reference images in ./references/.
 //
 //   Final ranking: CLIP score (primary), heuristic (tiebreaker).
@@ -68,42 +68,33 @@ async function main(args) {
   // Sort by heuristic score
   scores.sort((a, b) => b.totalScore - a.totalScore);
 
-  // Filter candidates for Pass 2
-  const threshold = target.heuristicThreshold;
-  const clipCandidates = scores.filter((s) => s.totalScore >= threshold);
-  const clipCount = clipCandidates.length;
-
+  // Pass 2: CLIP scoring on ALL images
   let clipAvailable = false;
-  if (clipCount === 0) {
-    console.log(`No images scored >= ${threshold} in heuristics. Skipping CLIP pass.`);
-    console.log(`Best heuristic score: ${scores[0]?.totalScore || 0}\n`);
-  } else {
-    console.log(`Pass 2 (CLIP): ${clipCount}/${files.length} images passed heuristic threshold (>= ${threshold})`);
-    console.log("  Initializing CLIP model...");
-    try {
-      await initCLIP();
-      clipAvailable = true;
-    } catch (err) {
-      console.error(`\n  CLIP unavailable: ${err.message}`);
-      console.log("  Falling back to heuristic-only scoring.");
-      console.log("  To enable CLIP: ensure internet access on first run + reference images in ./references/\n");
-    }
+  console.log(`Pass 2 (CLIP): scoring all ${scores.length} images...`);
+  console.log("  Initializing CLIP model...");
+  try {
+    await initCLIP();
+    clipAvailable = true;
+  } catch (err) {
+    console.error(`\n  CLIP unavailable: ${err.message}`);
+    console.log("  Falling back to heuristic-only scoring.");
+    console.log("  To enable CLIP: ensure internet access on first run + reference images in ./references/\n");
+  }
 
-    if (clipAvailable) {
-      for (let i = 0; i < clipCount; i++) {
-        const s = clipCandidates[i];
-        process.stdout.write(`\r  CLIP scoring: ${i + 1}/${clipCount}...`);
-        try {
-          const clip = await scoreCLIP(s.path);
-          s.similarity = clip.similarity;
-          s.bestRef = clip.bestRef;
-        } catch (err) {
-          console.error(`\n  CLIP error on ${s.file}: ${err.message}`);
-          s.similarity = 0;
-        }
+  if (clipAvailable) {
+    for (let i = 0; i < scores.length; i++) {
+      const s = scores[i];
+      process.stdout.write(`\r  CLIP scoring: ${i + 1}/${scores.length}...`);
+      try {
+        const clip = await scoreCLIP(s.path);
+        s.similarity = clip.similarity;
+        s.bestRef = clip.bestRef;
+      } catch (err) {
+        console.error(`\n  CLIP error on ${s.file}: ${err.message}`);
+        s.similarity = 0;
       }
-      console.log(" Done.\n");
     }
+    console.log(" Done.\n");
   }
 
   // Sort: CLIP similarity (primary), heuristic (tiebreaker)
@@ -116,7 +107,7 @@ async function main(args) {
   });
 
   // Print top results using target-specific formatting
-  const hasClip = clipAvailable && clipCount > 0;
+  const hasClip = clipAvailable;
   console.log(`Top ${Math.min(topN, scores.length)} results:`);
   console.log("─".repeat(99));
   console.log(hasClip ? target.clipHeader : target.heurHeader);
@@ -173,7 +164,7 @@ async function main(args) {
       },
       batch: {
         totalImages: files.length,
-        passedHeuristic: clipCount,
+        passedHeuristic: scores.filter((s) => s.totalScore >= target.heuristicThreshold).length,
         clipScored: clipScores.length,
       },
       clip: clipScores.length > 0 ? {
