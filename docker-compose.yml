@@ -21,7 +21,7 @@ services:
     entrypoint: ["./run-loop.sh"]
     command: ["100", "20", "0.85"]   # batch-size, top-n, min-similarity
     environment:
-      - TARGET=${TARGET:-pepe}
+      - TARGET=pepe
       - WORKER_ID=W1
     restart: unless-stopped
     volumes:
@@ -40,7 +40,7 @@ services:
     entrypoint: ["./run-loop.sh"]
     command: ["100", "20", "0.85"]
     environment:
-      - TARGET=${TARGET:-pepe}
+      - TARGET=alien
       - WORKER_ID=W2
     restart: unless-stopped
     volumes:
@@ -59,7 +59,7 @@ services:
     entrypoint: ["./run-loop.sh"]
     command: ["100", "20", "0.85"]
     environment:
-      - TARGET=${TARGET:-pepe}
+      - TARGET=shrek
       - WORKER_ID=W3
     restart: unless-stopped
     volumes:

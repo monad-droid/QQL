@@ -34,6 +34,12 @@ const textPrompts = [
   "Shrek the ogre, green face with brown eyes",
   "green ogre face with small ears",
   "Shrek animated movie character",
+  "green ogre with round head and small brown eyes",
+  "Shrek face, earthy green skin with brown accents",
+  "abstract green ogre portrait made of circles and rings",
+  "swampy green creature face with warm brown tones",
+  "cartoon green face with beady eyes and wide grin",
+  "earthy green and brown abstract face with round features",
 ];
 
 const referenceUrls = [];

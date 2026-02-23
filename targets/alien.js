@@ -34,6 +34,12 @@ const textPrompts = [
   "grey alien with big black eyes",
   "alien head, large eyes, green skin",
   "extraterrestrial being",
+  "alien face with large almond-shaped eyes on dark background",
+  "green alien portrait with oversized black oval eyes",
+  "abstract neon green face with two dark eye shapes",
+  "abstract alien made of concentric circles and rings, neon green",
+  "glowing green creature face on dark background with big eyes",
+  "sci-fi alien head, bioluminescent green and blue",
 ];
 
 const referenceUrls = [];
