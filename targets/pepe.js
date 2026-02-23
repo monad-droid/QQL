@@ -11,7 +11,7 @@ const name = "Pepe";
 // Edinburgh palette optimized for Pepe's earthy/muted green
 const traits = {
   colorPalette: "Edinburgh",
-  colorMode: "Stacked",
+  colorMode: "Simple",
   colorVariety: "Low",
   turbulence: "None",
   bullseyeRings1: "On",
@@ -23,7 +23,7 @@ const traits = {
   flowField: null,
   margin: "Wide",
   ringSize: null,
-  spacing: null,
+  spacing: "Dense",
 };
 
 const heuristicThreshold = 20;

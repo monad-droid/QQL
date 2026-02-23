@@ -144,6 +144,60 @@ async function main(args) {
   const scoresFile = path.join(resultsDir, "_scores.json");
   fs.writeFileSync(scoresFile, JSON.stringify(scores, null, 2));
   console.log(`Full scores saved to ${scoresFile}`);
+
+  // Append batch summary to history log for tracking parameter experiments
+  const historyFile = path.join(path.dirname(rendersDir), "hall-of-fame", "_history.jsonl");
+  try {
+    const historyDir = path.dirname(historyFile);
+    if (!fs.existsSync(historyDir)) fs.mkdirSync(historyDir, { recursive: true });
+
+    const clipScores = scores.filter((s) => s.similarity != null).map((s) => s.similarity);
+    const heurScores = scores.map((s) => s.totalScore);
+
+    const traits = typeof target.traits === "function" ? target.traits() : target.traits;
+    const entry = {
+      timestamp: new Date().toISOString(),
+      target: target.name,
+      traits: {
+        colorPalette: traits.colorPalette,
+        colorMode: traits.colorMode,
+        colorVariety: traits.colorVariety,
+        structure: traits.structure,
+        flowField: traits.flowField,
+        turbulence: traits.turbulence,
+        margin: traits.margin,
+        ringSize: traits.ringSize,
+        sizeVariety: traits.sizeVariety,
+        spacing: traits.spacing,
+        ringThickness: traits.ringThickness,
+      },
+      batch: {
+        totalImages: files.length,
+        passedHeuristic: clipCount,
+        clipScored: clipScores.length,
+      },
+      clip: clipScores.length > 0 ? {
+        best: Math.max(...clipScores),
+        worst: Math.min(...clipScores),
+        avg: +(clipScores.reduce((a, b) => a + b, 0) / clipScores.length).toFixed(4),
+        median: +clipScores.sort((a, b) => a - b)[Math.floor(clipScores.length / 2)]?.toFixed(4),
+        above90: clipScores.filter((s) => s >= 0.9).length,
+        above85: clipScores.filter((s) => s >= 0.85).length,
+        above80: clipScores.filter((s) => s >= 0.8).length,
+      } : null,
+      heuristic: {
+        best: Math.max(...heurScores),
+        avg: +(heurScores.reduce((a, b) => a + b, 0) / heurScores.length).toFixed(2),
+        median: +heurScores.sort((a, b) => a - b)[Math.floor(heurScores.length / 2)]?.toFixed(2),
+      },
+    };
+
+    fs.appendFileSync(historyFile, JSON.stringify(entry) + "\n");
+    console.log(`Batch history appended to ${historyFile}`);
+  } catch (err) {
+    // Non-fatal — don't crash scoring if history write fails
+    console.error(`Warning: could not write history: ${err.message}`);
+  }
 }
 
 main(process.argv.slice(2)).catch((e) => {
