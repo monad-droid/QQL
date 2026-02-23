@@ -1,14 +1,9 @@
-## QQL Art Hunter - 24/7 Cloud Deployment
-##
-## Default target: pepe (set TARGET env var to change)
+## QQL Pepe Hunter - 24/7 Cloud Deployment
 ##
 ## Quick start:
-##   docker compose up -d          # start hunting (pepe by default)
+##   docker compose up -d          # start hunting
 ##   docker compose logs -f        # watch progress
 ##   docker compose down           # stop
-##
-## Switch target:
-##   TARGET=monalisa docker compose up -d --build
 ##
 ## Check results:
 ##   ls hall-of-fame/              # all-time best images
@@ -16,59 +11,19 @@
 ##   ls logs/                      # per-batch logs
 
 services:
-  hunter-1:
+  hunter:
     build: .
     entrypoint: ["./run-loop.sh"]
     command: ["100", "20", "0.85"]   # batch-size, top-n, min-similarity
     environment:
       - TARGET=pepe
-      - WORKER_ID=W1
     restart: unless-stopped
     volumes:
       - ./hall-of-fame:/app/hall-of-fame
-      - ./results-w1:/app/results
+      - ./results:/app/results
       - ./logs:/app/logs
       - ./references:/app/references
     deploy:
       resources:
         limits:
-          memory: 2300M
-          cpus: "1.3"
-
-  hunter-2:
-    build: .
-    entrypoint: ["./run-loop.sh"]
-    command: ["100", "20", "0.85"]
-    environment:
-      - TARGET=alien
-      - WORKER_ID=W2
-    restart: unless-stopped
-    volumes:
-      - ./hall-of-fame:/app/hall-of-fame
-      - ./results-w2:/app/results
-      - ./logs:/app/logs
-      - ./references:/app/references
-    deploy:
-      resources:
-        limits:
-          memory: 2300M
-          cpus: "1.3"
-
-  hunter-3:
-    build: .
-    entrypoint: ["./run-loop.sh"]
-    command: ["100", "20", "0.85"]
-    environment:
-      - TARGET=shrek
-      - WORKER_ID=W3
-    restart: unless-stopped
-    volumes:
-      - ./hall-of-fame:/app/hall-of-fame
-      - ./results-w3:/app/results
-      - ./logs:/app/logs
-      - ./references:/app/references
-    deploy:
-      resources:
-        limits:
-          memory: 2300M
-          cpus: "1.3"
+          memory: 7G
