@@ -20,7 +20,7 @@ const { initCLIP, scoreCLIP } = require("./clip-score");
 // Usage: node score.js <renders-dir> [top-n]
 // =============================================================================
 
-const { loadTarget, getAllTextPrompts } = require("./targets");
+const { loadTarget } = require("./targets");
 const target = loadTarget();
 
 function parseArgs(args) {
@@ -73,7 +73,7 @@ async function main(args) {
   console.log(`Pass 2 (CLIP): scoring all ${scores.length} images...`);
   console.log("  Initializing CLIP model...");
   try {
-    await initCLIP({ textPrompts: getAllTextPrompts() });
+    await initCLIP({ textPrompts: target.textPrompts || [] });
     clipAvailable = true;
   } catch (err) {
     console.error(`\n  CLIP unavailable: ${err.message}`);
