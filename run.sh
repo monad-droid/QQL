@@ -15,7 +15,7 @@ TOP_N=${2:-20}
 RENDERS_DIR="renders"
 RESULTS_DIR="results"
 CHUNK=5
-WORKERS=2
+WORKERS=3
 
 echo "============================================"
 echo "  QQL ${TARGET} Hunter (CLIP-powered)"
