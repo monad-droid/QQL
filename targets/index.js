@@ -10,6 +10,9 @@ const path = require("path");
 const AVAILABLE = {
   pepe: "./pepe.js",
   monalisa: "./monalisa.js",
+  alien: "./alien.js",
+  shrek: "./shrek.js",
+  yoda: "./yoda.js",
 };
 
 function loadTarget() {

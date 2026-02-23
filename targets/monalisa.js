@@ -35,6 +35,13 @@ function traits() {
 
 const heuristicThreshold = 20;
 
+// Text prompts for CLIP text-to-image scoring
+const textPrompts = [
+  "Mona Lisa",
+  "Mona Lisa painting by Leonardo da Vinci",
+  "Renaissance portrait of a woman with mysterious smile",
+];
+
 // Reference image URLs for download-references.sh
 const referenceUrls = [
   {
@@ -237,6 +244,7 @@ module.exports = {
   name,
   traits,
   heuristicThreshold,
+  textPrompts,
   referenceUrls,
   scoreImage,
   clipHeader,

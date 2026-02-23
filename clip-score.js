@@ -2,46 +2,69 @@ const fs = require("fs");
 const path = require("path");
 
 // =============================================================================
-// CLIP Image Similarity — Pure image-to-image comparison
+// CLIP Similarity — Image-to-image AND text-to-image comparison
 //
-// Standard approach: encode both images with a pre-trained vision model,
-// compare feature vectors with cosine similarity. No text, no hacks.
+// Two modes:
+//   1. Image-to-image: encode both images with CLIP vision model, compare.
+//   2. Text-to-image:  encode text prompts with CLIP text model, compare
+//      against image embeddings. No reference images needed.
 //
-// This is the same technique used by reverse image search, "find similar
-// images," and every image retrieval system.
+// Text mode often works better for finding "looks like X" because CLIP's
+// text encoder captures the general concept rather than matching pixel details
+// of one specific reference photo.
 //
-// Reference images go in ./references/. Each candidate is compared against
-// every reference; the best match score is used for ranking.
+// Reference images go in ./references/. Text prompts are defined per-target.
+// Both can be used together — the best score across all references wins.
 // =============================================================================
 
 const CLIP_MODEL = "Xenova/clip-vit-base-patch32";
 const REFERENCES_DIR = path.join(__dirname, "references");
 
 let _visionModel = null;
+let _textModel = null;
+let _tokenizer = null;
 let _processor = null;
 let _refEmbeddings = null;
+let _textEmbeddings = null;
 
 async function getTransformers() {
   return await import("@huggingface/transformers");
 }
 
-async function initCLIP() {
-  if (_visionModel) return;
+async function initCLIP({ textPrompts = [] } = {}) {
+  const {
+    CLIPVisionModelWithProjection,
+    CLIPTextModelWithProjection,
+    AutoTokenizer,
+    AutoProcessor,
+  } = await getTransformers();
 
-  const { CLIPVisionModelWithProjection, AutoProcessor } =
-    await getTransformers();
+  if (!_visionModel) {
+    console.log("  Loading CLIP vision model (first run downloads ~350MB)...");
+    [_processor, _visionModel] = await Promise.all([
+      AutoProcessor.from_pretrained(CLIP_MODEL),
+      CLIPVisionModelWithProjection.from_pretrained(CLIP_MODEL),
+    ]);
+    console.log("  CLIP vision model loaded.");
+  }
 
-  console.log("  Loading CLIP vision model (first run downloads ~350MB)...");
+  // Load text model if we have text prompts
+  if (textPrompts.length > 0 && !_textModel) {
+    console.log("  Loading CLIP text model...");
+    [_tokenizer, _textModel] = await Promise.all([
+      AutoTokenizer.from_pretrained(CLIP_MODEL),
+      CLIPTextModelWithProjection.from_pretrained(CLIP_MODEL),
+    ]);
+    console.log("  CLIP text model loaded.");
+  }
 
-  [_processor, _visionModel] = await Promise.all([
-    AutoProcessor.from_pretrained(CLIP_MODEL),
-    CLIPVisionModelWithProjection.from_pretrained(CLIP_MODEL),
-  ]);
-
-  console.log("  CLIP vision model loaded.");
-
-  // Pre-compute reference embeddings
+  // Pre-compute reference image embeddings
   await getRefEmbeddings();
+
+  // Pre-compute text prompt embeddings
+  if (textPrompts.length > 0) {
+    await getTextEmbeddings(textPrompts);
+  }
 }
 
 function cosineSimilarity(a, b) {
@@ -60,6 +83,26 @@ async function encodeImage(imagePath) {
   const imageInputs = await _processor(rawImage);
   const output = await _visionModel(imageInputs);
   return Array.from(output.image_embeds.data);
+}
+
+async function encodeText(text) {
+  const textInputs = await _tokenizer(text, { padding: true, truncation: true });
+  const output = await _textModel(textInputs);
+  return Array.from(output.text_embeds.data);
+}
+
+async function getTextEmbeddings(prompts) {
+  if (_textEmbeddings) return _textEmbeddings;
+
+  _textEmbeddings = [];
+  console.log(`  Encoding ${prompts.length} text prompt(s)...`);
+  for (const prompt of prompts) {
+    const embedding = await encodeText(prompt);
+    _textEmbeddings.push({ name: `"${prompt}"`, embedding });
+  }
+  console.log(`  Text prompts encoded: ${prompts.map(p => `"${p}"`).join(", ")}`);
+
+  return _textEmbeddings;
 }
 
 async function getRefEmbeddings() {
@@ -84,11 +127,16 @@ async function getRefEmbeddings() {
   return _refEmbeddings;
 }
 
-// Compare one candidate against all references. Returns best match.
+// Compare one candidate against all references (images + text prompts).
+// Returns best match across both.
 async function scoreCLIP(imagePath) {
   const refEmbs = await getRefEmbeddings();
-  if (refEmbs.length === 0) {
-    throw new Error("No reference images in ./references/");
+  const textEmbs = _textEmbeddings || [];
+
+  const allRefs = [...refEmbs, ...textEmbs];
+
+  if (allRefs.length === 0) {
+    throw new Error("No reference images in ./references/ and no text prompts configured");
   }
 
   const candidateEmbedding = await encodeImage(imagePath);
@@ -97,7 +145,7 @@ async function scoreCLIP(imagePath) {
   let bestRef = "";
   const allSims = [];
 
-  for (const { name, embedding } of refEmbs) {
+  for (const { name, embedding } of allRefs) {
     const sim = cosineSimilarity(candidateEmbedding, embedding);
     allSims.push({ name, sim: Math.round(sim * 1000) / 1000 });
     if (sim > bestSim) {
@@ -113,4 +161,4 @@ async function scoreCLIP(imagePath) {
   };
 }
 
-module.exports = { initCLIP, scoreCLIP, encodeImage, cosineSimilarity };
+module.exports = { initCLIP, scoreCLIP, encodeImage, encodeText, cosineSimilarity };

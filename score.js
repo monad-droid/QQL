@@ -73,7 +73,7 @@ async function main(args) {
   console.log(`Pass 2 (CLIP): scoring all ${scores.length} images...`);
   console.log("  Initializing CLIP model...");
   try {
-    await initCLIP();
+    await initCLIP({ textPrompts: target.textPrompts || [] });
     clipAvailable = true;
   } catch (err) {
     console.error(`\n  CLIP unavailable: ${err.message}`);
