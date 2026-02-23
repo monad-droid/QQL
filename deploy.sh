@@ -1,5 +1,5 @@
 #!/bin/bash
-# QQL Pepe Hunter - Cloud Deploy Helper
+# QQL Mona Lisa Hunter - Cloud Deploy Helper
 #
 # SINGLE BATCH (one-shot):
 #   ./deploy.sh local 1000            Run locally via Docker
@@ -244,7 +244,7 @@ case "$MODE" in
     build_image
     ;;
   *)
-    echo "QQL Pepe Hunter - Cloud Deploy"
+    echo "QQL Mona Lisa Hunter - Cloud Deploy"
     echo ""
     echo "SINGLE BATCH (one-shot):"
     echo "  ./deploy.sh local [count] [top-n]       Run locally via Docker"

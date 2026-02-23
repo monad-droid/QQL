@@ -7,30 +7,31 @@ const traitsLib = require("./qql-headless/src/vendor/qql-traits.min.js");
 const random = require("./qql-headless/src/vendor/qql-safe-random.min.js");
 
 // =============================================================================
-// FIXED TRAITS - Optimized for Pepe-like outputs
+// FIXED TRAITS - Optimized for Mona Lisa-like outputs
 //
 // Strategy:
-//   - Edinburgh palette: Best match for Pepe's earthy/muted green. Contains:
-//       eCream (sat 4, bright 96) — near-white, perfect for eyes
-//       eCoolDarkGreen (hue 170, sat 52, bright 25) — Pepe face green
-//       eMidGreen (hue 150, sat 60, bright 35) — Pepe face green
-//       eGrayBlue (hue 200, sat 45, bright 40) — dark enough for pupils
-//       eBrown (hue 30, sat 35, bright 35) — mouth/lip tones
-//     Edinburgh has 5 backgrounds, including "Edinburgh Green" which makes
-//     the entire canvas green — Pepe's face base color.
-//   - Stacked color mode: Creates rings-within-rings = concentric circles that
-//     resemble eyes (white outer ring, dark inner ring).
-//   - Low color variety: Keeps output green-dominant, reduces random color noise.
-//   - No turbulence: Clean, round circles (not distorted/wobbly).
-//   - Bullseye rings on: Multiple concentric rings = more eye-like shapes.
-//   - Wild size variety: Need both large rings (eyes) and small rings (detail).
+//   - Fidenza palette: Best Renaissance palette. Contains:
+//       fNewsprint (hue 40, sat 12, bright 88) — warm parchment-like base
+//       fBrown/fDarkBrown/fExtraDarkBrown — dark surround tones (hair/bg)
+//       fPaleYellow (hue 43, sat 60, bright 99) — golden highlights (skin)
+//       fPink (hue 11, sat 35, bright 97) — skin tone highlights
+//       fOrange (hue 25, sat 78, bright 90) — warm face tones
+//     Fidenza has 6 backgrounds, including "Fidenza Brown" (dark, B=18) which
+//     creates the dark surround typical of Renaissance portraits, and
+//     "Fidenza Newsprint" (warm beige, B=92) for a golden canvas.
+//   - Stacked color mode: Concentric rings create depth and layered portrait
+//     compositions — lighter inner rings, darker outer rings.
+//   - Low color variety: Keeps output warm and cohesive, avoids random cool tones.
+//   - No turbulence: Clean, round circles for smooth portrait-like shapes.
+//   - Bullseye rings on: Concentric depth = Renaissance chiaroscuro effect.
+//   - Wild size variety: Large circles (face) + small (detail/texture).
 //   - Thick rings: Visible, prominent shapes.
-//   - Wide margin: Pushes circles inward, creating a face-shaped boundary.
+//   - Wide margin: Pushes circles inward, creating a centered portrait framing.
 //   - Everything else RANDOM: Flow field, structure, spacing, ring size
 //     are where the 1-in-a-million magic happens.
 // =============================================================================
 const FIXED_TRAITS = {
-  colorPalette: "Edinburgh",
+  colorPalette: "Fidenza",
   colorMode: "Stacked",
   colorVariety: "Low",
   turbulence: "None",

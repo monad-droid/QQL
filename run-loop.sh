@@ -1,5 +1,5 @@
 #!/bin/bash
-# QQL Pepe Hunter - Continuous Loop Mode
+# QQL Mona Lisa Hunter - Continuous Loop Mode
 #
 # Runs the pipeline in an infinite loop, accumulating the best results
 # across all runs. Designed for 24/7 cloud operation.
@@ -40,7 +40,7 @@ INIT
 fi
 
 echo "============================================"
-echo "  QQL Pepe Hunter - CONTINUOUS MODE"
+echo "  QQL Mona Lisa Hunter - CONTINUOUS MODE"
 echo "  Batch size:      $BATCH_SIZE images"
 echo "  Keep per batch:  $TOP_N"
 echo "  Hall-of-fame:    similarity >= $MIN_SIM"

@@ -1,4 +1,4 @@
-## QQL Pepe Hunter - 24/7 Cloud Deployment
+## QQL Mona Lisa Hunter - 24/7 Cloud Deployment
 ##
 ## Quick start:
 ##   docker compose up -d          # start hunting in background
@@ -20,7 +20,7 @@ services:
       - ./hall-of-fame:/app/hall-of-fame   # persisted best results
       - ./results:/app/results             # current batch results
       - ./logs:/app/logs                   # batch logs
-      - ./references:/app/references       # Pepe reference images
+      - ./references:/app/references       # Mona Lisa reference images
     deploy:
       resources:
         limits:
