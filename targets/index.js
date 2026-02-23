@@ -30,4 +30,19 @@ function loadTarget() {
   return target;
 }
 
-module.exports = { loadTarget, AVAILABLE };
+function getAllTextPrompts() {
+  const seen = new Set();
+  const all = [];
+  for (const targetPath of Object.values(AVAILABLE)) {
+    const t = require(targetPath);
+    for (const prompt of t.textPrompts || []) {
+      if (!seen.has(prompt)) {
+        seen.add(prompt);
+        all.push(prompt);
+      }
+    }
+  }
+  return all;
+}
+
+module.exports = { loadTarget, getAllTextPrompts, AVAILABLE };
