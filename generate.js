@@ -9,7 +9,13 @@ const random = require("./qql-headless/src/vendor/qql-safe-random.min.js");
 // Load target-specific traits from TARGET env var (default: pepe)
 const { loadTarget } = require("./targets");
 const targetConfig = loadTarget();
-const FIXED_TRAITS = targetConfig.traits;
+
+// Target traits can be a static object or a function (for per-render randomization)
+function getTraits() {
+  return typeof targetConfig.traits === "function"
+    ? targetConfig.traits()
+    : targetConfig.traits;
+}
 
 // 400px is enough for CLIP scoring (which uses 224px internally).
 // Re-render winners at full resolution later.
@@ -56,7 +62,7 @@ function generateSeed(target) {
   const nibbles = target.slice(2);
   if (nibbles.length === 40) {
     const address = Buffer.from(nibbles, "hex");
-    return randomSeed(address, FIXED_TRAITS);
+    return randomSeed(address, getTraits());
   }
   if (nibbles.length === 64) return target;
   throw new Error("expected address (40 hex) or seed (64 hex); got: " + target);

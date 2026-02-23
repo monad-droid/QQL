@@ -1,30 +1,37 @@
 // =============================================================================
 // TARGET: Mona Lisa
 //
-// Fidenza palette: Renaissance warm tones, browns, golden highlights.
+// Alternates between Berlin and Edinburgh palettes:
+//   Berlin:    warm browns/tans, dark backgrounds — Renaissance portrait tones
+//   Edinburgh: muted earthy greens/creams — sfumato landscape tones
 // Heuristics: Warm tone dominance, vignette/dark surround, central concentration.
 // =============================================================================
 const { createCanvas, loadImage } = require("canvas");
 
 const name = "Mona Lisa";
 
-// Fidenza palette optimized for Renaissance portrait tones
-const traits = {
-  colorPalette: "Fidenza",
-  colorMode: "Stacked",
-  colorVariety: "Low",
-  turbulence: "None",
-  bullseyeRings1: "On",
-  bullseyeRings3: "On",
-  bullseyeRings7: "On",
-  ringThickness: "Thick",
-  sizeVariety: "Wild",
-  structure: null,
-  flowField: null,
-  margin: "Wide",
-  ringSize: null,
-  spacing: null,
-};
+const PALETTES = ["Berlin", "Edinburgh"];
+
+// Returns fresh traits each call, randomly picking a palette
+function traits() {
+  const palette = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+  return {
+    colorPalette: palette,
+    colorMode: "Stacked",
+    colorVariety: "Low",
+    turbulence: "None",
+    bullseyeRings1: "On",
+    bullseyeRings3: "On",
+    bullseyeRings7: "On",
+    ringThickness: "Thick",
+    sizeVariety: "Wild",
+    structure: null,
+    flowField: null,
+    margin: "Wide",
+    ringSize: null,
+    spacing: null,
+  };
+}
 
 const heuristicThreshold = 20;
 
