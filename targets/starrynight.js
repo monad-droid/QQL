@@ -47,6 +47,15 @@ const textPrompts = [
   "deep blue generative art with bright yellow circular patterns",
   "swirling abstract composition in midnight blue with golden stars",
   "turbulent blue and yellow abstract painting with spiral energy",
+  // Starry Night Over the Rhône
+  "Starry Night Over the Rhône by Van Gogh",
+  "night sky reflected in water with golden lights, deep blue",
+  "dark blue river scene with yellow star reflections and city lights",
+  // Great Wave off Kanagawa
+  "The Great Wave off Kanagawa by Hokusai",
+  "giant blue wave with white foam curling over",
+  "Japanese woodblock print of large ocean wave with deep blue water",
+  "swirling blue wave pattern with white crests",
 ];
 
 // Reference image URLs for download-references.sh
@@ -58,6 +67,14 @@ const referenceUrls = [
   {
     name: "starry-night-small.jpg",
     url: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg/400px-Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg",
+  },
+  {
+    name: "starry-night-rhone.jpg",
+    url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Starry_Night_Over_the_Rhone.jpg/1280px-Starry_Night_Over_the_Rhone.jpg",
+  },
+  {
+    name: "great-wave.jpg",
+    url: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Tsunami_by_hokusai_19th_century.jpg/1280px-Tsunami_by_hokusai_19th_century.jpg",
   },
 ];
 
