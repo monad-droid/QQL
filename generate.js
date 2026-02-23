@@ -21,7 +21,7 @@ function getTraits() {
 // Re-render winners at full resolution later.
 const IMAGE_WIDTH = 256;
 
-const DEFAULT_ADDRESS = "0xA4620Fc13546462e817Fa49e44F04330872495a7";
+const DEFAULT_ADDRESS = "0x62FBee98c3fd5a8FC1240f3db853807fb4E89EBE";
 
 function parseArgs(args) {
   let [outdir, count, startIndex, workerTag] = args;
