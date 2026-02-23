@@ -14,7 +14,7 @@ services:
   hunter:
     build: .
     entrypoint: ["./run-loop.sh"]
-    command: ["100", "20", "0.85"]   # batch-size, top-n, min-similarity
+    command: ["100", "20", "0.75"]   # batch-size, top-n, min-similarity
     environment:
       - TARGET=pepe
     restart: unless-stopped
