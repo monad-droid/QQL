@@ -14,9 +14,9 @@ services:
   hunter:
     build: .
     entrypoint: ["./run-loop.sh"]
-    command: ["100", "20", "0.75"]   # batch-size, top-n, min-similarity
+    command: ["200", "20", "0.75"]   # batch-size, top-n, min-similarity
     environment:
-      - TARGET=pepe
+      - TARGET=starrynight
     restart: unless-stopped
     volumes:
       - ./hall-of-fame:/app/hall-of-fame
@@ -26,4 +26,4 @@ services:
     deploy:
       resources:
         limits:
-          memory: 7G
+          memory: 28G
