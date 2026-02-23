@@ -21,7 +21,7 @@ set -e
 export TARGET="${TARGET:-pepe}"
 BATCH_SIZE=${1:-500}
 TOP_N=${2:-20}
-MIN_SIM=${3:-0.85}
+MIN_SIM=${3:-0.75}
 HALL_OF_FAME="hall-of-fame"
 LOG_DIR="logs"
 STATS_FILE="$HALL_OF_FAME/_stats.json"
