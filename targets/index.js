@@ -13,6 +13,7 @@ const AVAILABLE = {
   alien: "./alien.js",
   shrek: "./shrek.js",
   yoda: "./yoda.js",
+  starrynight: "./starrynight.js",
 };
 
 function loadTarget() {
