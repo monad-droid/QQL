@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { initCLIP, scoreCLIP } = require("./clip-score");
+const { initDINO, scoreDINO } = require("./dino-score");
 
 // =============================================================================
 // QQL Art Hunter — Scorer
@@ -12,10 +12,11 @@ const { initCLIP, scoreCLIP } = require("./clip-score");
 //   Pass 1 (Heuristic - all images):
 //     Target-specific pixel analysis.
 //
-//   Pass 2 (CLIP semantic comparison - all images):
-//     Image-to-image similarity against reference images in ./references/.
+//   Pass 2 (DINOv3 image similarity - all images):
+//     Image-to-image similarity against reference images in ./references/
+//     using Meta's DINOv3 self-supervised vision model.
 //
-//   Final ranking: CLIP score (primary), heuristic (tiebreaker).
+//   Final ranking: DINOv3 score (primary), heuristic (tiebreaker).
 //
 // Usage: node score.js <renders-dir> [top-n]
 // =============================================================================
@@ -68,36 +69,36 @@ async function main(args) {
   // Sort by heuristic score
   scores.sort((a, b) => b.totalScore - a.totalScore);
 
-  // Pass 2: CLIP scoring on ALL images
-  let clipAvailable = false;
-  console.log(`Pass 2 (CLIP): scoring all ${scores.length} images...`);
-  console.log("  Initializing CLIP model...");
+  // Pass 2: DINOv3 image similarity scoring on ALL images
+  let dinoAvailable = false;
+  console.log(`Pass 2 (DINOv3): scoring all ${scores.length} images...`);
+  console.log("  Initializing DINOv3 model...");
   try {
-    await initCLIP({ textPrompts: target.textPrompts || [] });
-    clipAvailable = true;
+    await initDINO();
+    dinoAvailable = true;
   } catch (err) {
-    console.error(`\n  CLIP unavailable: ${err.message}`);
+    console.error(`\n  DINOv3 unavailable: ${err.message}`);
     console.log("  Falling back to heuristic-only scoring.");
-    console.log("  To enable CLIP: ensure internet access on first run + reference images in ./references/\n");
+    console.log("  To enable DINOv3: ensure internet access on first run + reference images in ./references/\n");
   }
 
-  if (clipAvailable) {
+  if (dinoAvailable) {
     for (let i = 0; i < scores.length; i++) {
       const s = scores[i];
-      process.stdout.write(`\r  CLIP scoring: ${i + 1}/${scores.length}...`);
+      process.stdout.write(`\r  DINOv3 scoring: ${i + 1}/${scores.length}...`);
       try {
-        const clip = await scoreCLIP(s.path);
-        s.similarity = clip.similarity;
-        s.bestRef = clip.bestRef;
+        const dino = await scoreDINO(s.path);
+        s.similarity = dino.similarity;
+        s.bestRef = dino.bestRef;
       } catch (err) {
-        console.error(`\n  CLIP error on ${s.file}: ${err.message}`);
+        console.error(`\n  DINOv3 error on ${s.file}: ${err.message}`);
         s.similarity = 0;
       }
     }
     console.log(" Done.\n");
   }
 
-  // Sort: CLIP similarity (primary), heuristic (tiebreaker)
+  // Sort: DINOv3 similarity (primary), heuristic (tiebreaker)
   scores.sort((a, b) => {
     if (a.similarity != null && b.similarity != null)
       return b.similarity - a.similarity || b.totalScore - a.totalScore;
@@ -107,7 +108,7 @@ async function main(args) {
   });
 
   // Print top results using target-specific formatting
-  const hasClip = clipAvailable;
+  const hasClip = dinoAvailable;
   console.log(`Top ${Math.min(topN, scores.length)} results:`);
   console.log("─".repeat(99));
   console.log(hasClip ? target.clipHeader : target.heurHeader);
