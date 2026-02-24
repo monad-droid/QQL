@@ -14,7 +14,7 @@ services:
   hunter:
     build: .
     entrypoint: ["./run-loop.sh"]
-    command: ["200", "20", "0.75"]   # batch-size, top-n, min-similarity
+    command: ["200", "20", "100"]     # batch-size, top-n, max-hall-of-fame
     environment:
       - TARGET=starrynight
     restart: unless-stopped

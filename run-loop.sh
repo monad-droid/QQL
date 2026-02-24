@@ -4,16 +4,16 @@
 # Runs the pipeline in an infinite loop, accumulating the best results
 # across all runs. Designed for 24/7 cloud operation.
 #
-# Usage: TARGET=monalisa ./run-loop.sh [batch-size] [top-n] [min-similarity]
+# Usage: TARGET=monalisa ./run-loop.sh [batch-size] [top-n] [max-hall-of-fame]
 #   batch-size:      images per batch (default: 500)
 #   top-n:           top results to keep per batch (default: 20)
-#   min-similarity:  minimum CLIP similarity to save to hall-of-fame (default: 0.85)
+#   max-hall-of-fame: keep top N all-time results in hall-of-fame (default: 100)
 #
 # TARGET env var selects the hunt target (default: pepe).
 #
 # Output:
 #   results/         current batch top results (overwritten each batch)
-#   hall-of-fame/    all-time best results above min-similarity threshold
+#   hall-of-fame/    rolling top-N all-time best results by DINOv3 similarity
 #   logs/            per-batch logs with timestamps
 
 set -e
@@ -21,7 +21,7 @@ set -e
 export TARGET="${TARGET:-pepe}"
 BATCH_SIZE=${1:-500}
 TOP_N=${2:-20}
-MIN_SIM=${3:-0.75}
+MAX_HOF=${3:-100}
 HALL_OF_FAME="hall-of-fame"
 LOG_DIR="logs"
 STATS_FILE="$HALL_OF_FAME/_stats.json"
@@ -46,7 +46,7 @@ echo "============================================"
 echo "  QQL ${TARGET} Hunter - CONTINUOUS MODE"
 echo "  Batch size:      $BATCH_SIZE images"
 echo "  Keep per batch:  $TOP_N"
-echo "  Hall-of-fame:    similarity >= $MIN_SIM"
+echo "  Hall-of-fame:    top $MAX_HOF all-time"
 echo "  Logs:            $LOG_DIR/"
 echo "  Results:         $HALL_OF_FAME/"
 echo "============================================"
@@ -81,32 +81,59 @@ while true; do
   BATCH_END=$(date +%s)
   BATCH_ELAPSED=$((BATCH_END - BATCH_START))
 
-  # Promote high-scoring results to hall-of-fame
+  # Promote top results to hall-of-fame (rolling top-N)
   BATCH_HITS=0
   if [ -f "results/_scores.json" ]; then
-    # Extract results above threshold using Node (no Python dependency)
     node -e "
       const fs = require('fs');
       const path = require('path');
       const scores = JSON.parse(fs.readFileSync('results/_scores.json', 'utf8'));
-      const minSim = ${MIN_SIM};
+      const maxHof = ${MAX_HOF};
       const hof = '${HALL_OF_FAME}';
       const ts = '${TIMESTAMP}';
-      let hits = 0;
 
+      // Get existing hall-of-fame entries with their similarity scores
+      const existing = fs.readdirSync(hof)
+        .filter(f => f.endsWith('.png') && f.startsWith('sim-'))
+        .map(f => {
+          const sim = parseFloat(f.split('-')[1]);
+          return { file: f, sim: isNaN(sim) ? 0 : sim };
+        })
+        .sort((a, b) => b.sim - a.sim);
+
+      // Find the current cutoff (lowest score in top N)
+      const cutoff = existing.length >= maxHof ? existing[maxHof - 1].sim : 0;
+
+      // Copy new results that beat the cutoff (or if hall not full yet)
+      let hits = 0;
       for (const s of scores) {
-        if (s.similarity && s.similarity >= minSim) {
-          const src = path.join('results',
-            fs.readdirSync('results')
-              .filter(f => f.endsWith('.png') && f.includes(s.file.replace('.png','')))
-              [0] || ''
-          );
-          if (src && fs.existsSync(src)) {
+        if (s.similarity && (s.similarity > cutoff || existing.length + hits < maxHof)) {
+          const src = s.path || path.join('renders', s.file);
+          if (fs.existsSync(src)) {
             const dest = path.join(hof, 'sim-' + s.similarity.toFixed(4) + '-batch' + ${BATCH} + '-' + ts + '-' + s.file);
             fs.copyFileSync(src, dest);
             hits++;
-            console.log('  ★ HALL OF FAME: sim=' + s.similarity.toFixed(4) + ' -> ' + dest);
+            console.log('  ★ HALL OF FAME: sim=' + s.similarity.toFixed(4) + ' -> ' + path.basename(dest));
           }
+        }
+      }
+
+      // Prune to keep only top N
+      if (hits > 0) {
+        const all = fs.readdirSync(hof)
+          .filter(f => f.endsWith('.png') && f.startsWith('sim-'))
+          .map(f => {
+            const sim = parseFloat(f.split('-')[1]);
+            return { file: f, sim: isNaN(sim) ? 0 : sim };
+          })
+          .sort((a, b) => b.sim - a.sim);
+
+        if (all.length > maxHof) {
+          const toRemove = all.slice(maxHof);
+          for (const entry of toRemove) {
+            fs.unlinkSync(path.join(hof, entry.file));
+          }
+          console.log('  Pruned ' + toRemove.length + ' entries (kept top ' + maxHof + ')');
         }
       }
 
@@ -116,6 +143,7 @@ while true; do
       stats.totalBatches = ${BATCH};
       stats.totalImages = ${BATCH} * ${BATCH_SIZE};
       stats.totalHits = (stats.totalHits || 0) + hits;
+      stats.hallOfFameSize = Math.min(existing.length + hits, maxHof);
       stats.startedAt = stats.startedAt || '${STARTED_AT}';
       stats.lastBatchAt = new Date().toISOString();
       stats.lastBatchElapsed = ${BATCH_ELAPSED};
@@ -127,9 +155,17 @@ while true; do
         stats.bestFile = best.file;
       }
 
+      // Track cutoff for visibility
+      const finalAll = fs.readdirSync(hof)
+        .filter(f => f.endsWith('.png') && f.startsWith('sim-'))
+        .map(f => parseFloat(f.split('-')[1]))
+        .filter(s => !isNaN(s))
+        .sort((a, b) => b - a);
+      stats.hofCutoff = finalAll.length >= maxHof ? finalAll[maxHof - 1] : 0;
+      stats.hofBest = finalAll[0] || 0;
+
       fs.writeFileSync('${STATS_FILE}', JSON.stringify(stats, null, 2));
       console.log('  Batch hits: ' + hits);
-      process.stdout.write('HITS:' + hits);
     " 2>/dev/null || true
   fi
 
