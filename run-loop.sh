@@ -93,8 +93,19 @@ while true; do
       const ts = '${TIMESTAMP}';
 
       // Get existing hall-of-fame entries with their similarity scores
+      // Filter out zombie files (0-byte/truncated from interrupted docker compose down)
+      const MIN_PNG_SIZE = 1024;
       const existing = fs.readdirSync(hof)
         .filter(f => f.endsWith('.png') && f.startsWith('sim-'))
+        .filter(f => {
+          const size = fs.statSync(path.join(hof, f)).size;
+          if (size < MIN_PNG_SIZE) {
+            fs.unlinkSync(path.join(hof, f));
+            console.log('  Removed corrupt entry (' + size + ' bytes): ' + f);
+            return false;
+          }
+          return true;
+        })
         .map(f => {
           const sim = parseFloat(f.split('-')[1]);
           return { file: f, sim: isNaN(sim) ? 0 : sim };
@@ -103,6 +114,7 @@ while true; do
 
       // Find the current cutoff (lowest score in top N)
       const cutoff = existing.length >= maxHof ? existing[maxHof - 1].sim : 0;
+      console.log('  HOF: ' + existing.length + ' entries, cutoff=' + cutoff.toFixed(4) + ', best=' + (existing[0] ? existing[0].sim.toFixed(4) : 'N/A'));
 
       // Copy new results that beat the cutoff (or if hall not full yet)
       let hits = 0;
@@ -123,6 +135,7 @@ while true; do
       if (hits > 0) {
         const all = fs.readdirSync(hof)
           .filter(f => f.endsWith('.png') && f.startsWith('sim-'))
+          .filter(f => fs.statSync(path.join(hof, f)).size >= MIN_PNG_SIZE)
           .map(f => {
             const sim = parseFloat(f.split('-')[1]);
             return { file: f, sim: isNaN(sim) ? 0 : sim };
@@ -141,8 +154,8 @@ while true; do
       // Update stats
       let stats = {};
       try { stats = JSON.parse(fs.readFileSync('${STATS_FILE}', 'utf8')); } catch(e) {}
-      stats.totalBatches = ${BATCH};
-      stats.totalImages = ${BATCH} * ${BATCH_SIZE};
+      stats.totalBatches = (stats.totalBatches || 0) + 1;
+      stats.totalImages = (stats.totalImages || 0) + ${BATCH_SIZE};
       stats.totalHits = (stats.totalHits || 0) + hits;
       stats.hallOfFameSize = Math.min(existing.length + hits, maxHof);
       stats.startedAt = stats.startedAt || '${STARTED_AT}';
@@ -167,7 +180,16 @@ while true; do
 
       fs.writeFileSync('${STATS_FILE}', JSON.stringify(stats, null, 2));
       console.log('  Batch hits: ' + hits);
-    " 2>/dev/null || true
+
+      // Print full HOF scoreboard
+      const rows = [];
+      for (let i = 0; i < finalAll.length; i += 10) {
+        rows.push(finalAll.slice(i, i + 10).map(s => s.toFixed(4)).join(' '));
+      }
+      console.log('  ── HOF scoreboard (' + finalAll.length + ' entries) ──');
+      rows.forEach((r, i) => console.log('  ' + String(i * 10 + 1).padStart(3) + ': ' + r));
+      console.log('  ──────────────────────────────');
+    " || echo "  WARNING: hall-of-fame promotion script failed"
   fi
 
   # Summary
