@@ -110,10 +110,11 @@ while true; do
         if (s.similarity && (s.similarity > cutoff || existing.length + hits < maxHof)) {
           const src = s.path || path.join('renders', s.file);
           if (fs.existsSync(src)) {
-            const dest = path.join(hof, 'sim-' + s.similarity.toFixed(4) + '-batch' + ${BATCH} + '-' + ts + '-' + s.file);
+            const ref = (s.bestRef || 'unknown').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const dest = path.join(hof, 'sim-' + s.similarity.toFixed(4) + '-ref-' + ref + '-batch' + ${BATCH} + '-' + ts + '-' + s.file);
             fs.copyFileSync(src, dest);
             hits++;
-            console.log('  ★ HALL OF FAME: sim=' + s.similarity.toFixed(4) + ' -> ' + path.basename(dest));
+            console.log('  ★ HALL OF FAME: sim=' + s.similarity.toFixed(4) + ' ref=' + (s.bestRef || '?') + ' -> ' + path.basename(dest));
           }
         }
       }
