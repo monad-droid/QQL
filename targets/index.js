@@ -14,6 +14,7 @@ const AVAILABLE = {
   shrek: "./shrek.js",
   yoda: "./yoda.js",
   starrynight: "./starrynight.js",
+  wave: "./wave.js",
 };
 
 function loadTarget() {
