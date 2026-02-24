@@ -25,7 +25,7 @@ RUN git clone https://github.com/qql-art/qql-headless.git \
   && cd qql-headless && npm install
 
 # Copy application code
-COPY generate.js score.js clip-score.js run.sh run-loop.sh download-references.sh ./
+COPY generate.js score.js dino-score.js run.sh run-loop.sh download-references.sh ./
 COPY targets/ ./targets/
 
 # Create directories (references may be empty but must exist for COPY)
@@ -36,13 +36,11 @@ COPY references/ ./references/
 
 RUN chmod +x run.sh run-loop.sh download-references.sh
 
-# Pre-download CLIP model so first run doesn't wait for download
+# Pre-download DINOv3 model so first run doesn't wait for download
 RUN node -e "import('@huggingface/transformers').then(t => \
   Promise.all([ \
-    t.AutoTokenizer.from_pretrained('Xenova/clip-vit-base-patch32'), \
-    t.AutoProcessor.from_pretrained('Xenova/clip-vit-base-patch32'), \
-    t.CLIPTextModelWithProjection.from_pretrained('Xenova/clip-vit-base-patch32'), \
-    t.CLIPVisionModelWithProjection.from_pretrained('Xenova/clip-vit-base-patch32'), \
-  ]).then(() => console.log('CLIP model cached.')))"
+    t.AutoProcessor.from_pretrained('onnx-community/dinov3-vitb16-pretrain-lvd1689m-ONNX'), \
+    t.AutoModel.from_pretrained('onnx-community/dinov3-vitb16-pretrain-lvd1689m-ONNX'), \
+  ]).then(() => console.log('DINOv3 model cached.')))"
 
 ENTRYPOINT ["./run.sh"]
