@@ -16,8 +16,9 @@ const path = require("path");
 
 const REFS_DIR = process.argv[2] || "references";
 const WIDTH = 1280;
-const CONCURRENCY = 6;
+const CONCURRENCY = 4;
 const MAX_REFS = parseInt(process.env.MAX_REFS) || 2000;
+const VERBOSE = process.env.VERBOSE === "1";
 
 // Load target config
 const TARGET = process.env.TARGET || "pepe";
@@ -120,14 +121,19 @@ async function searchWikimediaFile(query) {
   try {
     const json = await fetchJson(url);
     const results = (json.query && json.query.search) || [];
+    if (VERBOSE) console.log(`    [commons] search "${query}" -> ${results.length} results`);
     for (const r of results) {
       // r.title is like "File:Mona_Lisa.jpg"
       const filename = r.title.replace(/^File:/, "");
       if (/\.(jpg|jpeg|png|tif|tiff|webp)$/i.test(filename)) {
+        if (VERBOSE) console.log(`    [commons] matched: ${filename.slice(0, 60)}`);
         return filename;
       }
     }
-  } catch (_) {}
+    if (VERBOSE && results.length > 0) console.log(`    [commons] no image files in results`);
+  } catch (e) {
+    if (VERBOSE) console.log(`    [commons] ERROR: ${e.message}`);
+  }
   return null;
 }
 
@@ -147,6 +153,7 @@ async function searchWikipediaForImage(query) {
     const searchJson = await fetchJson(searchUrl);
     // opensearch returns [query, [titles], [descriptions], [urls]]
     const titles = (searchJson && searchJson[1]) || [];
+    if (VERBOSE) console.log(`    [wp] opensearch "${query}" -> ${titles.length} titles: ${titles.slice(0,2).join(", ")}`);
     if (titles.length === 0) return null;
 
     // Step 2: get pageimages thumbnail for the best match (capped at WIDTH)
@@ -160,8 +167,11 @@ async function searchWikipediaForImage(query) {
     const pages = (pageJson.query && pageJson.query.pages) || {};
     const page = Object.values(pages)[0];
     const imgUrl = page && page.thumbnail && page.thumbnail.source;
+    if (VERBOSE) console.log(`    [wp] pageimages "${titles[0]}" -> ${imgUrl ? "OK" : "no image"}`);
     return imgUrl || null;
-  } catch (_) {}
+  } catch (e) {
+    if (VERBOSE) console.log(`    [wp] ERROR: ${e.message}`);
+  }
   return null;
 }
 
@@ -294,8 +304,10 @@ async function downloadOneManual(ref) {
       if (imgUrl) {
         await downloadFile(imgUrl, dest);
         if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
+        if (VERBOSE) console.log(`    [wp] downloaded but too small: ${ref.name}`);
       }
-    } catch (_) {
+    } catch (e) {
+      if (VERBOSE) console.log(`    [wp] download error for ${ref.name}: ${e.message}`);
       try { fs.unlinkSync(dest); } catch (_e) {}
     }
   }
@@ -309,9 +321,11 @@ async function downloadOneManual(ref) {
         if (thumbUrl) {
           await downloadFile(thumbUrl, dest);
           if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
+          if (VERBOSE) console.log(`    [commons] downloaded but too small: ${ref.name}`);
         }
       }
-    } catch (_) {
+    } catch (e) {
+      if (VERBOSE) console.log(`    [commons] download error for ${ref.name}: ${e.message}`);
       try { fs.unlinkSync(dest); } catch (_e) {}
     }
   }
