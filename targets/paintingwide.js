@@ -38,19 +38,20 @@ const textPrompts = [
 ];
 
 // Wikimedia Commons categories for bulk painting downloads.
-// Used as Phase 2 fallback after the curated list to fill gaps.
+// Used as Phase 1 for efficient bulk download via category crawl.
 const referenceCategories = [
-  "Featured pictures of paintings",
-  "Oil paintings in the Louvre",
-  "Oil paintings in the Uffizi",
+  "Google Art Project paintings",              // ~9,682 high-quality files
+  "Featured pictures of paintings",            // 52 subcategories of curated paintings
+  "Oil paintings in the Louvre",               // subcategories by medium/century
+  "Paintings in the Uffizi Gallery",           // subcategories by artist/room
   "Paintings in the Rijksmuseum Amsterdam",
   "Paintings in the National Gallery, London",
   "Paintings in the Museo del Prado",
   "Paintings in the Metropolitan Museum of Art",
   "Paintings by Rembrandt",
-  "Paintings by Vermeer",
-  "Paintings by Monet",
-  "Paintings by Van Gogh",
+  "Paintings by Johannes Vermeer",
+  "Paintings by Claude Monet",
+  "Paintings by Vincent van Gogh",
 ];
 
 // ~1000 curated top paintings. Data lives in painting-refs.js for cleanliness.
