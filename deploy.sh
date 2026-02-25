@@ -105,7 +105,7 @@ run_daemon_remote() {
   echo ">>> Uploading project files to server..."
   ssh "$server" "mkdir -p ~/qql-hunter/{hall-of-fame,results,logs,references,targets}"
   scp Dockerfile docker-compose.yml run.sh run-loop.sh \
-      generate.js score.js clip-score.js \
+      generate.js score.js dino-score.js clip-score.js \
       download-references.sh \
       package.json package-lock.json \
       "$server":~/qql-hunter/
@@ -254,7 +254,7 @@ case "$MODE" in
     echo "QQL Art Hunter - Cloud Deploy (target=$TARGET)"
     echo ""
     echo "Set TARGET env var to choose target (default: pepe)."
-    echo "Available: pepe, monalisa"
+    echo "Available: pepe, monalisa, alien, shrek, yoda, starrynight, wave, paintingwide"
     echo ""
     echo "SINGLE BATCH (one-shot):"
     echo "  ./deploy.sh local [count] [top-n]       Run locally via Docker"
