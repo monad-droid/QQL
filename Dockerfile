@@ -26,7 +26,7 @@ RUN git clone https://github.com/qql-art/qql-headless.git \
   && cd qql-headless && npm install
 
 # Copy application code
-COPY generate.js score.js dino-score.js run.sh run-loop.sh download-references.sh ./
+COPY generate.js score.js dino-score.js run.sh run-loop.sh download-references.sh download-references.js ./
 COPY targets/ ./targets/
 
 # Create directories (references may be empty but must exist for COPY)

@@ -58,7 +58,7 @@ mkdir -p references
 REF_COUNT=$(find references -maxdepth 1 -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) | wc -l)
 if [ "$REF_COUNT" -eq 0 ]; then
   echo ">>> No reference images found in ./references. Attempting download for TARGET=$TARGET ..."
-  ./download-references.sh references || true
+  node download-references.js references || ./download-references.sh references || true
 fi
 
 # Step 2: Score (heuristic pre-filter + DINOv3 semantic scoring)
