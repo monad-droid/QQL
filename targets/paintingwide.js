@@ -40,18 +40,55 @@ const textPrompts = [
 // Wikimedia Commons categories for bulk painting downloads.
 // Used as Phase 1 for efficient bulk download via category crawl.
 const referenceCategories = [
-  "Google Art Project paintings",              // ~9,682 high-quality files
-  "Featured pictures of paintings",            // 52 subcategories of curated paintings
-  "Oil paintings in the Louvre",               // subcategories by medium/century
-  "Paintings in the Uffizi Gallery",           // subcategories by artist/room
+  // Mega source: high-quality digitized paintings
+  "Google Art Project paintings",
+  // Curated quality
+  "Featured pictures of paintings",
+  // Major museums
+  "Oil paintings in the Louvre",
+  "Paintings in the Uffizi Gallery",
   "Paintings in the Rijksmuseum Amsterdam",
   "Paintings in the National Gallery, London",
   "Paintings in the Museo del Prado",
   "Paintings in the Metropolitan Museum of Art",
+  "Paintings in the Musée d'Orsay",
+  "Paintings in the Hermitage",
+  "Paintings in the Alte Pinakothek",
+  "Paintings in the Art Institute of Chicago",
+  // Artists: Renaissance & Baroque
+  "Paintings by Leonardo da Vinci",
+  "Paintings by Raffaello Sanzio",
+  "Paintings by Sandro Botticelli",
+  "Paintings by Titian",
+  "Paintings by Caravaggio",
+  "Paintings by Peter Paul Rubens",
   "Paintings by Rembrandt",
   "Paintings by Johannes Vermeer",
+  "Paintings by Diego Velázquez",
+  "Paintings by El Greco",
+  "Paintings by Jan van Eyck",
+  "Paintings by Hieronymus Bosch",
+  // Artists: 18th-19th century
+  "Paintings by Francisco de Goya",
+  "Paintings by Jacques-Louis David",
+  "Paintings by Eugène Delacroix",
+  "Paintings by Caspar David Friedrich",
+  "Paintings by Joseph Mallord William Turner",
+  "Paintings by John Constable",
+  // Artists: Impressionist & Post-Impressionist
+  "Paintings by Édouard Manet",
   "Paintings by Claude Monet",
+  "Paintings by Pierre-Auguste Renoir",
+  "Paintings by Edgar Degas",
+  "Paintings by Paul Cézanne",
   "Paintings by Vincent van Gogh",
+  "Paintings by Paul Gauguin",
+  // Artists: Modern
+  "Paintings by Gustav Klimt",
+  "Paintings by Edvard Munch",
+  "Paintings by Wassily Kandinsky",
+  "Paintings by Henri Matisse",
+  "Paintings by Amedeo Modigliani",
 ];
 
 // ~1000 curated top paintings. Data lives in painting-refs.js for cleanliness.

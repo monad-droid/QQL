@@ -46,9 +46,9 @@ RUN node -e "import('@huggingface/transformers').then(t => \
 
 # Pre-download painting references at build time via category crawl.
 # CATEGORIES_ONLY=1 skips the slow 993-entry search-based list; the fast
-# Wikimedia Commons category crawl gives 300-500 quality paintings in
-# a handful of API calls with no rate-limiting risk.
-RUN TARGET=paintingwide CATEGORIES_ONLY=1 MAX_REFS=500 node download-references.js references \
+# Wikimedia Commons category crawl across 40+ categories (Google Art Project,
+# major museums, and 30+ artists) provides diverse, high-quality paintings.
+RUN TARGET=paintingwide CATEGORIES_ONLY=1 MAX_REFS=800 node download-references.js references \
   && echo "References baked: $(ls references | wc -l) images"
 
 ENTRYPOINT ["./run.sh"]
