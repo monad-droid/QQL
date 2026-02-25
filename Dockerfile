@@ -31,16 +31,16 @@ COPY targets/ ./targets/
 # Create directories (references may be empty but must exist for COPY)
 RUN mkdir -p renders results references hall-of-fame logs
 
-# Copy reference images for CLIP comparison (if any exist)
+# Copy reference images for DINOv3 comparison (if any exist)
 COPY references/ ./references/
 
 RUN chmod +x run.sh run-loop.sh download-references.sh
 
-# Pre-download DINOv3 model so first run doesn't wait for download
+# Pre-download DINOv3 ViT-L/16 model so first run doesn't wait for download
 RUN node -e "import('@huggingface/transformers').then(t => \
   Promise.all([ \
-    t.AutoProcessor.from_pretrained('onnx-community/dinov3-vitb16-pretrain-lvd1689m-ONNX'), \
-    t.AutoModel.from_pretrained('onnx-community/dinov3-vitb16-pretrain-lvd1689m-ONNX'), \
-  ]).then(() => console.log('DINOv3 model cached.')))"
+    t.AutoProcessor.from_pretrained('onnx-community/dinov3-vitl16-pretrain-lvd1689m-ONNX'), \
+    t.AutoModel.from_pretrained('onnx-community/dinov3-vitl16-pretrain-lvd1689m-ONNX'), \
+  ]).then(() => console.log('DINOv3 ViT-L/16 model cached.')))"
 
 ENTRYPOINT ["./run.sh"]

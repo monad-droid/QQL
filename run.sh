@@ -18,10 +18,10 @@ CHUNK=5
 WORKERS=6
 
 echo "============================================"
-echo "  QQL ${TARGET} Hunter (CLIP-powered)"
+echo "  QQL ${TARGET} Hunter (DINOv3-powered)"
 echo "  Generating: $COUNT images ($WORKERS workers, chunks of $CHUNK)"
 echo "  Keeping top: $TOP_N results"
-echo "  Scoring: Heuristic + CLIP (all images)"
+echo "  Scoring: Heuristic + DINOv3 (all images)"
 echo "============================================"
 echo ""
 
@@ -52,7 +52,7 @@ echo ""
 echo "Generation complete in $((GEN_END - START))s"
 echo ""
 
-# Step 2: Score (heuristic pre-filter + CLIP semantic scoring)
+# Step 2: Score (heuristic pre-filter + DINOv3 image similarity)
 echo ">>> Step 2/2: Scoring and ranking..."
 node --max-old-space-size=4096 score.js "$RENDERS_DIR" "$TOP_N"
 SCORE_END=$(date +%s)
