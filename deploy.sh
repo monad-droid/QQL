@@ -2,7 +2,7 @@
 # QQL Art Hunter - Cloud Deploy Helper
 #
 # Set TARGET env var to choose hunt target (default: pepe).
-# Available targets: pepe, monalisa
+# Available targets: pepe, monalisa, alien, shrek, yoda, starrynight, wave, paintingwide
 #
 # SINGLE BATCH (one-shot):
 #   ./deploy.sh local 1000            Run locally via Docker

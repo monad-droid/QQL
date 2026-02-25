@@ -5,7 +5,7 @@
 #   top-n: number of top results to keep (default: 20)
 #
 # TARGET env var selects the hunt target (default: pepe).
-# Available targets: pepe, monalisa
+# Available targets: pepe, monalisa, alien, shrek, yoda, starrynight, wave, paintingwide
 
 set -e
 
