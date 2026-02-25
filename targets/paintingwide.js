@@ -37,11 +37,60 @@ const textPrompts = [
   "museum painting",
 ];
 
-// Comprehensive collection of public-domain painting references (Wikimedia Commons).
-// Covers all major art movements from Renaissance to Post-Impressionism.
+// Wikimedia Commons categories to crawl for bulk reference images.
+// download-references.js enumerates these via the MediaWiki API and downloads
+// up to MAX_REFS (default 2000) thumbnails. Categories are crawled with one
+// level of subcategory recursion for broad coverage.
+const referenceCategories = [
+  // Top-tier curated
+  "Featured_pictures_of_paintings",
+  "Featured_pictures_of_oil_paintings",
+  // Movements & eras
+  "Renaissance_paintings",
+  "Baroque_paintings",
+  "Impressionist_paintings",
+  "Post-Impressionist_paintings",
+  "Romantic_paintings",
+  "Neoclassical_paintings",
+  "Realist_paintings",
+  "Expressionist_paintings",
+  "Symbolist_paintings",
+  "Art_Nouveau_paintings",
+  "Ukiyo-e",
+  // Major museums (Google Art Project scans are high quality)
+  "Google_Art_Project_works_in_the_Rijksmuseum",
+  "Google_Art_Project_works_in_the_Metropolitan_Museum_of_Art",
+  "Google_Art_Project_works_in_the_Musée_d'Orsay",
+  "Google_Art_Project_works_in_the_National_Gallery,_London",
+  "Google_Art_Project_works_in_the_Museum_of_Modern_Art",
+  // Major artists (prolific + public domain)
+  "Paintings_by_Vincent_van_Gogh",
+  "Paintings_by_Claude_Monet",
+  "Paintings_by_Rembrandt",
+  "Paintings_by_Pierre-Auguste_Renoir",
+  "Paintings_by_Paul_Cézanne",
+  "Paintings_by_J._M._W._Turner",
+  "Paintings_by_Gustav_Klimt",
+  "Paintings_by_Caspar_David_Friedrich",
+  "Paintings_by_Eugène_Delacroix",
+  "Paintings_by_Edgar_Degas",
+  "Paintings_by_Paul_Gauguin",
+  "Paintings_by_Sandro_Botticelli",
+  "Paintings_by_Caravaggio",
+  "Paintings_by_Johannes_Vermeer",
+  "Paintings_by_Peter_Paul_Rubens",
+  // Abstract & modern (public domain artists)
+  "Paintings_by_Wassily_Kandinsky",
+  "Paintings_by_Piet_Mondrian",
+  "Paintings_by_Paul_Klee",
+  "Paintings_by_Franz_Marc",
+  "Paintings_by_Edvard_Munch",
+];
+
+// Curated baseline list — guaranteed downloads even if category crawl is slow.
+// These ~95 images download first, then category crawl fills up to MAX_REFS (2000).
 // The `wikimedia` field is the exact Commons filename — download-references.js
 // resolves the correct thumbnail URL via the MediaWiki API at download time.
-// ~80 images at 1280px ≈ 25-40 MB total.
 const referenceUrls = [
   // ===== RENAISSANCE & EARLY MODERN =====
   { name: "mona-lisa.jpg", wikimedia: "Mona_Lisa,_by_Leonardo_da_Vinci,_from_C2RMF_retouched.jpg" },
@@ -286,6 +335,7 @@ module.exports = {
   heuristicThreshold,
   textPrompts,
   referenceUrls,
+  referenceCategories,
   scoreImage,
   clipHeader,
   heurHeader,
