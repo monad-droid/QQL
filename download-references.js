@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Download reference images from Wikimedia Commons.
+// Download reference images from Wikimedia Commons + Wikipedia.
 //
 // Each entry in referenceUrls can specify:
 //   - wikimedia: exact Wikimedia Commons filename (fastest, tried first)
-//   - search:    search query to find the painting on Commons (fallback)
+//   - search:    search query to find the painting on Commons/Wikipedia (fallback)
 //
 // Usage: node download-references.js [refs_dir]
 //   TARGET env var selects which target config to use (default: pepe)
 //   MAX_REFS env var caps total downloads (default: 2000)
+//   VERBOSE=1 for detailed per-request logging
 
 const https = require("https");
 const http = require("http");
@@ -16,9 +17,12 @@ const path = require("path");
 
 const REFS_DIR = process.argv[2] || "references";
 const WIDTH = 1280;
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
 const MAX_REFS = parseInt(process.env.MAX_REFS) || 2000;
 const VERBOSE = process.env.VERBOSE === "1";
+const REQ_TIMEOUT = 12000;   // 12s per HTTP request
+const BATCH_DELAY = 300;     // 300ms between batches to avoid rate limiting
+const MAX_RETRIES = 2;       // retry failed API calls up to 2 times
 
 // Load target config
 const TARGET = process.env.TARGET || "pepe";
@@ -38,12 +42,24 @@ fs.mkdirSync(REFS_DIR, { recursive: true });
 
 // ─── HTTP helpers ───────────────────────────────────────────────────────────
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function httpsGet(url) {
   return new Promise((resolve, reject) => {
     const proto = url.startsWith("https") ? https : http;
-    proto
-      .get(url, { headers: { "User-Agent": "QQL-Hunter/1.0 (art project)" } }, resolve)
-      .on("error", reject);
+    const req = proto.get(
+      url,
+      {
+        headers: { "User-Agent": "QQL-Hunter/1.0 (art reference downloader)" },
+        timeout: REQ_TIMEOUT,
+      },
+      resolve
+    );
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("timeout"));
+    });
   });
 }
 
@@ -51,13 +67,17 @@ function fetchJson(url) {
   return new Promise(async (resolve, reject) => {
     try {
       const res = await httpsGet(url);
+      if (res.statusCode === 429 || res.statusCode >= 500) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
       let data = "";
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
         try {
           resolve(JSON.parse(data));
         } catch (e) {
-          reject(new Error("Bad JSON"));
+          reject(new Error("Bad JSON: " + data.slice(0, 100)));
         }
       });
       res.on("error", reject);
@@ -65,6 +85,23 @@ function fetchJson(url) {
       reject(e);
     }
   });
+}
+
+// fetchJson with retry + backoff
+async function fetchJsonRetry(url, retries = MAX_RETRIES) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetchJson(url);
+    } catch (e) {
+      if (attempt < retries) {
+        const delay = 1000 * Math.pow(2, attempt); // 1s, 2s
+        if (VERBOSE) console.log(`    [retry] attempt ${attempt + 1} failed (${e.message}), waiting ${delay}ms...`);
+        await sleep(delay);
+      } else {
+        throw e;
+      }
+    }
+  }
 }
 
 function downloadFile(url, dest, redirects = 5) {
@@ -92,6 +129,7 @@ function downloadFile(url, dest, redirects = 5) {
 // ─── Wikimedia API helpers ──────────────────────────────────────────────────
 
 const API = "https://commons.wikimedia.org/w/api.php";
+const WPAPI = "https://en.wikipedia.org/w/api.php";
 
 async function resolveThumbUrl(filename) {
   const url =
@@ -101,7 +139,7 @@ async function resolveThumbUrl(filename) {
     "&prop=imageinfo&iiprop=url&iiurlwidth=" +
     WIDTH +
     "&format=json";
-  const json = await fetchJson(url);
+  const json = await fetchJsonRetry(url);
   const pages = (json.query && json.query.pages) || {};
   const page = Object.values(pages)[0];
   const info = page && page.imageinfo && page.imageinfo[0];
@@ -109,39 +147,32 @@ async function resolveThumbUrl(filename) {
 }
 
 // Search Wikimedia Commons for a painting by title/artist.
-// Returns the best matching filename or null.
 async function searchWikimediaFile(query) {
   const url =
     API +
     "?action=query&list=search" +
-    "&srnamespace=6" + // File: namespace only
+    "&srnamespace=6" +
     "&srsearch=" + encodeURIComponent(query) +
     "&srlimit=10" +
     "&format=json";
   try {
-    const json = await fetchJson(url);
+    const json = await fetchJsonRetry(url);
     const results = (json.query && json.query.search) || [];
     if (VERBOSE) console.log(`    [commons] search "${query}" -> ${results.length} results`);
     for (const r of results) {
-      // r.title is like "File:Mona_Lisa.jpg"
       const filename = r.title.replace(/^File:/, "");
       if (/\.(jpg|jpeg|png|tif|tiff|webp)$/i.test(filename)) {
         if (VERBOSE) console.log(`    [commons] matched: ${filename.slice(0, 60)}`);
         return filename;
       }
     }
-    if (VERBOSE && results.length > 0) console.log(`    [commons] no image files in results`);
   } catch (e) {
     if (VERBOSE) console.log(`    [commons] ERROR: ${e.message}`);
   }
   return null;
 }
 
-const WPAPI = "https://en.wikipedia.org/w/api.php";
-
 // Search Wikipedia for a painting article, then extract its primary image.
-// This is more reliable than Commons search for famous paintings because
-// Wikipedia articles almost always have the correct painting as infobox image.
 async function searchWikipediaForImage(query) {
   try {
     // Step 1: opensearch to find the Wikipedia article title
@@ -150,20 +181,19 @@ async function searchWikipediaForImage(query) {
       "?action=opensearch" +
       "&search=" + encodeURIComponent(query) +
       "&limit=3&format=json";
-    const searchJson = await fetchJson(searchUrl);
-    // opensearch returns [query, [titles], [descriptions], [urls]]
+    const searchJson = await fetchJsonRetry(searchUrl);
     const titles = (searchJson && searchJson[1]) || [];
-    if (VERBOSE) console.log(`    [wp] opensearch "${query}" -> ${titles.length} titles: ${titles.slice(0,2).join(", ")}`);
+    if (VERBOSE) console.log(`    [wp] opensearch "${query}" -> ${titles.length} titles: ${titles.slice(0, 2).join(", ")}`);
     if (titles.length === 0) return null;
 
-    // Step 2: get pageimages thumbnail for the best match (capped at WIDTH)
+    // Step 2: get pageimages thumbnail for the best match
     const pageUrl =
       WPAPI +
       "?action=query" +
       "&titles=" + encodeURIComponent(titles[0]) +
       "&prop=pageimages&pithumbsize=" + WIDTH +
       "&format=json";
-    const pageJson = await fetchJson(pageUrl);
+    const pageJson = await fetchJsonRetry(pageUrl);
     const pages = (pageJson.query && pageJson.query.pages) || {};
     const page = Object.values(pages)[0];
     const imgUrl = page && page.thumbnail && page.thumbnail.source;
@@ -175,7 +205,7 @@ async function searchWikipediaForImage(query) {
   return null;
 }
 
-// Enumerate all files in a Wikimedia Commons category (handles pagination).
+// Enumerate files in a Wikimedia Commons category (handles pagination).
 async function listCategoryFiles(categoryName, maxFiles) {
   const files = [];
   let cmcontinue = "";
@@ -192,13 +222,11 @@ async function listCategoryFiles(categoryName, maxFiles) {
       "&format=json";
     if (cmcontinue) url += "&cmcontinue=" + encodeURIComponent(cmcontinue);
 
-    const json = await fetchJson(url);
+    const json = await fetchJsonRetry(url);
     const members = (json.query && json.query.categorymembers) || [];
 
     for (const m of members) {
-      // m.title is like "File:Mona_Lisa.jpg"
       const filename = m.title.replace(/^File:/, "");
-      // Only include image files
       if (/\.(jpg|jpeg|png|webp|tif|tiff)$/i.test(filename)) {
         files.push(filename);
       }
@@ -228,7 +256,7 @@ async function listSubcategories(categoryName) {
       "&cmtype=subcat&cmlimit=500&format=json";
     if (cmcontinue) url += "&cmcontinue=" + encodeURIComponent(cmcontinue);
 
-    const json = await fetchJson(url);
+    const json = await fetchJsonRetry(url);
     const members = (json.query && json.query.categorymembers) || [];
 
     for (const m of members) {
@@ -292,7 +320,8 @@ async function downloadOneManual(ref) {
         await downloadFile(thumbUrl, dest);
         if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
       }
-    } catch (_) {
+    } catch (e) {
+      if (VERBOSE) console.log(`    [wikimedia] error ${ref.name}: ${e.message}`);
       try { fs.unlinkSync(dest); } catch (_e) {}
     }
   }
@@ -334,7 +363,6 @@ async function downloadOneManual(ref) {
 }
 
 async function downloadOneCrawled(filename) {
-  // Use a sanitized version of the filename as local name
   const localName = filename
     .replace(/[^a-zA-Z0-9._-]/g, "_")
     .replace(/_+/g, "_")
@@ -360,7 +388,6 @@ async function runBatch(items, downloadFn, label, getName) {
     const batch = items.slice(i, i + CONCURRENCY);
     const results = await Promise.all(batch.map(async (item) => {
       const r = await downloadFn(item);
-      // Per-item logging for manual refs
       if (getName) {
         const tag = r === "ok" ? "OK" : r === "exists" ? "SKIP" : "FAIL";
         console.log(`  [${tag}] ${getName(item)}`);
@@ -372,12 +399,16 @@ async function runBatch(items, downloadFn, label, getName) {
       else if (r === "exists") exists++;
       else fail++;
     }
-    // Progress summary every 50
+    // Progress summary
     const done = Math.min(i + CONCURRENCY, items.length);
-    if (!getName && (done % 50 === 0 || done === items.length)) {
+    if (!getName && (done % 20 === 0 || done === items.length)) {
       process.stdout.write(
-        `  ${label}: ${done}/${items.length} (${ok} new, ${exists} cached, ${fail} failed)\r`
+        `\r  ${label}: ${done}/${items.length} (${ok} new, ${exists} cached, ${fail} failed)`
       );
+    }
+    // Throttle between batches to avoid rate limiting
+    if (i + CONCURRENCY < items.length) {
+      await sleep(BATCH_DELAY);
     }
   }
 
@@ -391,24 +422,12 @@ async function main() {
   console.log(`>>> Reference image downloader for target: ${TARGET}`);
   console.log(`>>> Max references: ${MAX_REFS}`);
   console.log(`>>> Destination: ${REFS_DIR}/`);
+  console.log(`>>> Concurrency: ${CONCURRENCY}, batch delay: ${BATCH_DELAY}ms, timeout: ${REQ_TIMEOUT}ms`);
   console.log("");
 
   let totalOk = 0, totalExists = 0, totalFail = 0;
 
-  // Phase 1: Download manual reference list (guaranteed baseline)
-  if (manualRefs.length > 0) {
-    console.log(`>>> Phase 1: Downloading ${manualRefs.length} curated references...`);
-    const r = await runBatch(manualRefs, downloadOneManual, "Manual", (ref) => ref.name);
-    totalOk += r.ok;
-    totalExists += r.exists;
-    totalFail += r.fail;
-    console.log(
-      `  Manual: ${r.ok} downloaded, ${r.exists} cached, ${r.fail} failed`
-    );
-    console.log("");
-  }
-
-  // Phase 2: Crawl Wikimedia Commons categories for bulk references
+  // Phase 1: Crawl Wikimedia Commons categories FIRST (most efficient — few API calls, many files)
   if (categories.length > 0) {
     const existingCount = fs
       .readdirSync(REFS_DIR)
@@ -417,10 +436,9 @@ async function main() {
 
     if (remaining > 0) {
       console.log(
-        `>>> Phase 2: Crawling ${categories.length} Wikimedia categories (up to ${remaining} more)...`
+        `>>> Phase 1: Crawling ${categories.length} Wikimedia categories (up to ${remaining} images)...`
       );
 
-      // Collect all filenames from all categories, deduplicating
       const allFiles = new Set();
       const perCategory = Math.ceil(remaining / categories.length);
 
@@ -449,19 +467,28 @@ async function main() {
         console.log(
           `  Categories: ${r.ok} downloaded, ${r.exists} cached, ${r.fail} failed`
         );
+        console.log("");
       }
-    } else {
-      console.log(
-        `>>> Phase 2: Skipped — already have ${existingCount} references (max: ${MAX_REFS})`
-      );
     }
+  }
+
+  // Phase 2: Download curated reference list (search-based, slower)
+  if (manualRefs.length > 0) {
+    console.log(`>>> Phase 2: Downloading ${manualRefs.length} curated references...`);
+    const r = await runBatch(manualRefs, downloadOneManual, "Manual", (ref) => ref.name);
+    totalOk += r.ok;
+    totalExists += r.exists;
+    totalFail += r.fail;
+    console.log(
+      `  Manual: ${r.ok} downloaded, ${r.exists} cached, ${r.fail} failed`
+    );
+    console.log("");
   }
 
   // Summary
   const finalFiles = fs
     .readdirSync(REFS_DIR)
     .filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f));
-  console.log("");
   console.log("═══════════════════════════════════════════════");
   console.log(
     `  Total: ${totalOk} downloaded, ${totalExists} cached, ${totalFail} failed`

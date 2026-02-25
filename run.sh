@@ -58,14 +58,6 @@ mkdir -p references
 REF_COUNT=$(find references -maxdepth 1 -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) | wc -l)
 if [ "$REF_COUNT" -eq 0 ]; then
   echo ">>> No reference images found in ./references. Attempting download for TARGET=$TARGET ..."
-  # Run diagnostic on first few entries to detect API issues
-  if [ -f test-download-apis.js ]; then
-    echo ">>> Running API diagnostic..."
-    timeout 60 node test-download-apis.js 2>&1 | head -80 || true
-    echo ""
-  fi
-  VERBOSE=1 MAX_REFS=5 node download-references.js references 2>&1 | head -60 || true
-  echo ">>> Full download starting..."
   node download-references.js references || ./download-references.sh references || true
 fi
 
