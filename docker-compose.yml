@@ -22,7 +22,7 @@ services:
       - ./hall-of-fame:/app/hall-of-fame
       - ./results:/app/results
       - ./logs:/app/logs
-      - ./references:/app/references
+      # references are baked into the image at build time — no volume mount needed
     deploy:
       resources:
         limits:

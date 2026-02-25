@@ -20,6 +20,8 @@ const WIDTH = 1280;
 const CONCURRENCY = 2;
 const MAX_REFS = parseInt(process.env.MAX_REFS) || 2000;
 const VERBOSE = process.env.VERBOSE === "1";
+// CATEGORIES_ONLY=1 skips the slow search-based manual list (used at build time)
+const CATEGORIES_ONLY = process.env.CATEGORIES_ONLY === "1";
 const REQ_TIMEOUT = 12000;   // 12s per HTTP request
 const BATCH_DELAY = 300;     // 300ms between batches to avoid rate limiting
 const MAX_RETRIES = 2;       // retry failed API calls up to 2 times
@@ -473,7 +475,8 @@ async function main() {
   }
 
   // Phase 2: Download curated reference list (search-based, slower)
-  if (manualRefs.length > 0) {
+  // Skipped when CATEGORIES_ONLY=1 (e.g. during Docker build)
+  if (!CATEGORIES_ONLY && manualRefs.length > 0) {
     console.log(`>>> Phase 2: Downloading ${manualRefs.length} curated references...`);
     const r = await runBatch(manualRefs, downloadOneManual, "Manual", (ref) => ref.name);
     totalOk += r.ok;
