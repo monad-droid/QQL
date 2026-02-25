@@ -31,7 +31,7 @@ async function initDINO() {
   const { AutoProcessor, AutoModel } = await getTransformers();
 
   if (!_model) {
-    console.log("  Loading DINOv3 ViT-B/16 model (first run downloads ~350MB)...");
+    console.log("  Loading DINOv3 ViT-L/16 model (first run downloads ~1.2GB)...");
     [_processor, _model] = await Promise.all([
       AutoProcessor.from_pretrained(DINO_MODEL),
       AutoModel.from_pretrained(DINO_MODEL),
