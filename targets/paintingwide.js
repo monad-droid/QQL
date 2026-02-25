@@ -37,10 +37,21 @@ const textPrompts = [
   "museum painting",
 ];
 
-// No category crawl — all references are curated by title in referenceUrls.
-// Each entry uses `wikimedia` (exact filename) and/or `search` (title query).
-// download-references.js tries wikimedia first, then search, skips failures.
-const referenceCategories = [];
+// Wikimedia Commons categories for bulk painting downloads.
+// Used as Phase 2 fallback after the curated list to fill gaps.
+const referenceCategories = [
+  "Featured pictures of paintings",
+  "Oil paintings in the Louvre",
+  "Oil paintings in the Uffizi",
+  "Paintings in the Rijksmuseum Amsterdam",
+  "Paintings in the National Gallery, London",
+  "Paintings in the Museo del Prado",
+  "Paintings in the Metropolitan Museum of Art",
+  "Paintings by Rembrandt",
+  "Paintings by Vermeer",
+  "Paintings by Monet",
+  "Paintings by Van Gogh",
+];
 
 // ~1000 curated top paintings. Data lives in painting-refs.js for cleanliness.
 const referenceUrls = require("./painting-refs");

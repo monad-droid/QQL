@@ -114,8 +114,8 @@ async function searchWikimediaFile(query) {
     API +
     "?action=query&list=search" +
     "&srnamespace=6" + // File: namespace only
-    "&srsearch=" + encodeURIComponent(query + " painting") +
-    "&srlimit=5" +
+    "&srsearch=" + encodeURIComponent(query) +
+    "&srlimit=10" +
     "&format=json";
   try {
     const json = await fetchJson(url);
@@ -127,6 +127,40 @@ async function searchWikimediaFile(query) {
         return filename;
       }
     }
+  } catch (_) {}
+  return null;
+}
+
+const WPAPI = "https://en.wikipedia.org/w/api.php";
+
+// Search Wikipedia for a painting article, then extract its primary image.
+// This is more reliable than Commons search for famous paintings because
+// Wikipedia articles almost always have the correct painting as infobox image.
+async function searchWikipediaForImage(query) {
+  try {
+    // Step 1: opensearch to find the Wikipedia article title
+    const searchUrl =
+      WPAPI +
+      "?action=opensearch" +
+      "&search=" + encodeURIComponent(query) +
+      "&limit=3&format=json";
+    const searchJson = await fetchJson(searchUrl);
+    // opensearch returns [query, [titles], [descriptions], [urls]]
+    const titles = (searchJson && searchJson[1]) || [];
+    if (titles.length === 0) return null;
+
+    // Step 2: get pageimages thumbnail for the best match (capped at WIDTH)
+    const pageUrl =
+      WPAPI +
+      "?action=query" +
+      "&titles=" + encodeURIComponent(titles[0]) +
+      "&prop=pageimages&pithumbsize=" + WIDTH +
+      "&format=json";
+    const pageJson = await fetchJson(pageUrl);
+    const pages = (pageJson.query && pageJson.query.pages) || {};
+    const page = Object.values(pages)[0];
+    const imgUrl = page && page.thumbnail && page.thumbnail.source;
+    return imgUrl || null;
   } catch (_) {}
   return null;
 }
@@ -253,7 +287,20 @@ async function downloadOneManual(ref) {
     }
   }
 
-  // Fall back to search-based resolution
+  // Fall back to Wikipedia opensearch + pageimages (most reliable for famous paintings)
+  if (ref.search) {
+    try {
+      const imgUrl = await searchWikipediaForImage(ref.search);
+      if (imgUrl) {
+        await downloadFile(imgUrl, dest);
+        if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
+      }
+    } catch (_) {
+      try { fs.unlinkSync(dest); } catch (_e) {}
+    }
+  }
+
+  // Fall back to Commons search-based resolution
   if (ref.search) {
     try {
       const filename = await searchWikimediaFile(ref.search);
@@ -292,27 +339,35 @@ async function downloadOneCrawled(filename) {
   return "failed";
 }
 
-async function runBatch(items, downloadFn, label) {
+async function runBatch(items, downloadFn, label, getName) {
   let ok = 0, exists = 0, fail = 0;
 
   for (let i = 0; i < items.length; i += CONCURRENCY) {
     const batch = items.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(batch.map(downloadFn));
+    const results = await Promise.all(batch.map(async (item) => {
+      const r = await downloadFn(item);
+      // Per-item logging for manual refs
+      if (getName) {
+        const tag = r === "ok" ? "OK" : r === "exists" ? "SKIP" : "FAIL";
+        console.log(`  [${tag}] ${getName(item)}`);
+      }
+      return r;
+    }));
     for (const r of results) {
       if (r === "ok") ok++;
       else if (r === "exists") exists++;
       else fail++;
     }
-    // Progress every 50
+    // Progress summary every 50
     const done = Math.min(i + CONCURRENCY, items.length);
-    if (done % 50 === 0 || done === items.length) {
+    if (!getName && (done % 50 === 0 || done === items.length)) {
       process.stdout.write(
         `  ${label}: ${done}/${items.length} (${ok} new, ${exists} cached, ${fail} failed)\r`
       );
     }
   }
 
-  process.stdout.write("\n");
+  if (!getName) process.stdout.write("\n");
   return { ok, exists, fail };
 }
 
@@ -329,7 +384,7 @@ async function main() {
   // Phase 1: Download manual reference list (guaranteed baseline)
   if (manualRefs.length > 0) {
     console.log(`>>> Phase 1: Downloading ${manualRefs.length} curated references...`);
-    const r = await runBatch(manualRefs, downloadOneManual, "Manual");
+    const r = await runBatch(manualRefs, downloadOneManual, "Manual", (ref) => ref.name);
     totalOk += r.ok;
     totalExists += r.exists;
     totalFail += r.fail;
