@@ -14,17 +14,18 @@ const https = require("https");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const REFS_DIR = process.argv[2] || "references";
 const WIDTH = 1280;
-const CONCURRENCY = 2;
+const CONCURRENCY = 4;
 const MAX_REFS = parseInt(process.env.MAX_REFS) || 2000;
 const VERBOSE = process.env.VERBOSE === "1";
 // CATEGORIES_ONLY=1 skips the slow search-based manual list (used at build time)
 const CATEGORIES_ONLY = process.env.CATEGORIES_ONLY === "1";
-const REQ_TIMEOUT = 12000;   // 12s per HTTP request
+const REQ_TIMEOUT = 20000;   // 20s per HTTP request (thumbs can be slow to generate)
 const BATCH_DELAY = 300;     // 300ms between batches to avoid rate limiting
-const MAX_RETRIES = 2;       // retry failed API calls up to 2 times
+const MAX_RETRIES = 3;       // retry failed API calls up to 3 times
 
 // Load target config
 const TARGET = process.env.TARGET || "pepe";
@@ -52,7 +53,7 @@ function httpsGet(url) {
     const req = proto.get(
       url,
       {
-        headers: { "User-Agent": "QQL-Hunter/1.0 (art reference downloader)" },
+        headers: { "User-Agent": "QQL-Hunter/1.0 (art reference downloader; contact: github.com/monad-droid/QQL)" },
         timeout: REQ_TIMEOUT,
       },
       resolve
@@ -96,7 +97,7 @@ async function fetchJsonRetry(url, retries = MAX_RETRIES) {
       return await fetchJson(url);
     } catch (e) {
       if (attempt < retries) {
-        const delay = 1000 * Math.pow(2, attempt); // 1s, 2s
+        const delay = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
         if (VERBOSE) console.log(`    [retry] attempt ${attempt + 1} failed (${e.message}), waiting ${delay}ms...`);
         await sleep(delay);
       } else {
@@ -128,11 +129,36 @@ function downloadFile(url, dest, redirects = 5) {
   });
 }
 
-// ─── Wikimedia API helpers ──────────────────────────────────────────────────
+// ─── Wikimedia URL helpers ──────────────────────────────────────────────────
 
 const API = "https://commons.wikimedia.org/w/api.php";
 const WPAPI = "https://en.wikipedia.org/w/api.php";
 
+// Compute Wikimedia Commons thumbnail URL directly from filename.
+// Uses the deterministic MD5-based path: /thumb/{a}/{ab}/{name}/{W}px-{name}
+// No API call needed — works for ~95% of files.
+function computeThumbUrl(filename, width) {
+  const name = filename.replace(/ /g, "_");
+  const hash = crypto.createHash("md5").update(name).digest("hex");
+
+  let thumbName;
+  if (/\.tiff?$/i.test(name)) {
+    thumbName = "lossy-page1-" + width + "px-" + name + ".jpg";
+  } else if (/\.svg$/i.test(name)) {
+    thumbName = width + "px-" + name + ".png";
+  } else {
+    thumbName = width + "px-" + name;
+  }
+
+  return (
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/" +
+    hash[0] + "/" + hash.slice(0, 2) + "/" +
+    encodeURIComponent(name) + "/" +
+    encodeURIComponent(thumbName)
+  );
+}
+
+// Resolve thumb URL via API (used as fallback for manual refs).
 async function resolveThumbUrl(filename) {
   const url =
     API +
@@ -177,7 +203,6 @@ async function searchWikimediaFile(query) {
 // Search Wikipedia for a painting article, then extract its primary image.
 async function searchWikipediaForImage(query) {
   try {
-    // Step 1: opensearch to find the Wikipedia article title
     const searchUrl =
       WPAPI +
       "?action=opensearch" +
@@ -188,7 +213,6 @@ async function searchWikipediaForImage(query) {
     if (VERBOSE) console.log(`    [wp] opensearch "${query}" -> ${titles.length} titles: ${titles.slice(0, 2).join(", ")}`);
     if (titles.length === 0) return null;
 
-    // Step 2: get pageimages thumbnail for the best match
     const pageUrl =
       WPAPI +
       "?action=query" +
@@ -207,42 +231,7 @@ async function searchWikipediaForImage(query) {
   return null;
 }
 
-// Enumerate files in a Wikimedia Commons category (handles pagination).
-async function listCategoryFiles(categoryName, maxFiles) {
-  const files = [];
-  let cmcontinue = "";
-
-  while (files.length < maxFiles) {
-    const batch = Math.min(500, maxFiles - files.length);
-    let url =
-      API +
-      "?action=query&list=categorymembers" +
-      "&cmtitle=Category:" +
-      encodeURIComponent(categoryName) +
-      "&cmtype=file&cmlimit=" +
-      batch +
-      "&format=json";
-    if (cmcontinue) url += "&cmcontinue=" + encodeURIComponent(cmcontinue);
-
-    const json = await fetchJsonRetry(url);
-    const members = (json.query && json.query.categorymembers) || [];
-
-    for (const m of members) {
-      const filename = m.title.replace(/^File:/, "");
-      if (/\.(jpg|jpeg|png|webp|tif|tiff)$/i.test(filename)) {
-        files.push(filename);
-      }
-    }
-
-    cmcontinue =
-      json.continue && json.continue.cmcontinue
-        ? json.continue.cmcontinue
-        : "";
-    if (!cmcontinue || members.length === 0) break;
-  }
-
-  return files;
-}
+// ─── Category crawl with combined URL resolution ────────────────────────────
 
 // Enumerate subcategories of a category.
 async function listSubcategories(categoryName) {
@@ -275,30 +264,84 @@ async function listSubcategories(categoryName) {
   return subcats;
 }
 
-// Crawl a category + optional 1 level of subcategories.
-async function crawlCategory(categoryName, maxFiles, recurse = true) {
+// Crawl a category using generator=categorymembers + prop=imageinfo.
+// Returns [{filename, thumbUrl}] — both file listing AND URL resolution
+// in a single API request per 50 files (vs. 1 API call per file before).
+async function crawlCategoryWithUrls(categoryName, maxFiles) {
+  const results = [];
+  let cont = "";
+
+  while (results.length < maxFiles) {
+    let url =
+      API +
+      "?action=query" +
+      "&generator=categorymembers" +
+      "&gcmtitle=Category:" + encodeURIComponent(categoryName) +
+      "&gcmtype=file&gcmlimit=50" +
+      "&prop=imageinfo&iiprop=url" +
+      "&iiurlwidth=" + WIDTH +
+      "&format=json";
+    if (cont) url += "&gcmcontinue=" + encodeURIComponent(cont);
+
+    const json = await fetchJsonRetry(url);
+    const pages = (json.query && json.query.pages) || {};
+
+    let count = 0;
+    for (const [id, page] of Object.entries(pages)) {
+      if (parseInt(id) < 0) continue; // missing/invalid page
+      const filename = (page.title || "").replace(/^File:/, "");
+      if (!/\.(jpg|jpeg|png|webp|tif|tiff)$/i.test(filename)) continue;
+
+      const info = page.imageinfo && page.imageinfo[0];
+      const apiUrl = info && (info.thumburl || info.url);
+      // Use API-provided URL if available, else compute from MD5 hash
+      const thumbUrl = apiUrl || computeThumbUrl(filename, WIDTH);
+
+      results.push({ filename, thumbUrl });
+      count++;
+    }
+
+    cont = json.continue && json.continue.gcmcontinue
+      ? json.continue.gcmcontinue
+      : "";
+    if (!cont || count === 0) break;
+
+    await sleep(BATCH_DELAY);
+  }
+
+  return results.slice(0, maxFiles);
+}
+
+// Crawl a category + 1 level of subcategories, returning [{filename, thumbUrl}].
+async function crawlCategoryFull(categoryName, maxFiles) {
   console.log(`  Crawling: ${categoryName} ...`);
-  const files = await listCategoryFiles(categoryName, maxFiles);
-  console.log(`    -> ${files.length} files`);
+  const results = await crawlCategoryWithUrls(categoryName, maxFiles);
+  console.log(`    -> ${results.length} files with URLs`);
 
-  if (recurse && files.length < maxFiles) {
+  if (results.length < maxFiles) {
     const subcats = await listSubcategories(categoryName);
-    const remaining = maxFiles - files.length;
-    const perSubcat = Math.max(50, Math.floor(remaining / Math.max(1, subcats.length)));
+    if (subcats.length > 0) {
+      const remaining = maxFiles - results.length;
+      const perSubcat = Math.max(50, Math.floor(remaining / Math.max(1, subcats.length)));
+      const seenFiles = new Set(results.map((r) => r.filename));
 
-    for (const sub of subcats) {
-      if (files.length >= maxFiles) break;
-      console.log(`  Crawling subcategory: ${sub} ...`);
-      const subFiles = await listCategoryFiles(sub, perSubcat);
-      console.log(`    -> ${subFiles.length} files`);
-      for (const f of subFiles) {
-        if (files.length >= maxFiles) break;
-        if (!files.includes(f)) files.push(f);
+      for (const sub of subcats) {
+        if (results.length >= maxFiles) break;
+        console.log(`  Crawling subcategory: ${sub} ...`);
+        const subResults = await crawlCategoryWithUrls(sub, perSubcat);
+        console.log(`    -> ${subResults.length} files`);
+        for (const r of subResults) {
+          if (results.length >= maxFiles) break;
+          if (!seenFiles.has(r.filename)) {
+            seenFiles.add(r.filename);
+            results.push(r);
+          }
+        }
       }
     }
   }
 
-  return files;
+  return results;
 }
 
 // ─── Download logic ─────────────────────────────────────────────────────────
@@ -364,22 +407,35 @@ async function downloadOneManual(ref) {
   return "failed";
 }
 
-async function downloadOneCrawled(filename) {
-  const localName = filename
+// Download a crawled file using its pre-resolved URL (no API call needed).
+async function downloadOneCrawled(entry) {
+  const localName = entry.filename
     .replace(/[^a-zA-Z0-9._-]/g, "_")
     .replace(/_+/g, "_")
     .slice(0, 120);
   const dest = path.join(REFS_DIR, localName);
   if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "exists";
 
+  // Primary: use pre-resolved URL (from API or MD5 hash)
   try {
-    const thumbUrl = await resolveThumbUrl(filename);
-    if (!thumbUrl) return "not_found";
-    await downloadFile(thumbUrl, dest);
+    await downloadFile(entry.thumbUrl, dest);
     if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
+  } catch (e) {
+    if (VERBOSE) console.log(`    [dl] ${entry.filename.slice(0, 50)}: ${e.message}`);
+    try { fs.unlinkSync(dest); } catch (_e) {}
+  }
+
+  // Fallback: compute URL via MD5 hash (in case API URL was wrong)
+  try {
+    const md5Url = computeThumbUrl(entry.filename, WIDTH);
+    if (md5Url !== entry.thumbUrl) {
+      await downloadFile(md5Url, dest);
+      if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
+    }
   } catch (_) {
     try { fs.unlinkSync(dest); } catch (_e) {}
   }
+
   return "failed";
 }
 
@@ -429,7 +485,9 @@ async function main() {
 
   let totalOk = 0, totalExists = 0, totalFail = 0;
 
-  // Phase 1: Crawl Wikimedia Commons categories FIRST (most efficient — few API calls, many files)
+  // Phase 1: Crawl Wikimedia Commons categories with combined URL resolution.
+  // Uses generator=categorymembers + prop=imageinfo to get filenames AND
+  // thumbnail URLs in the same API call (50 per request vs. 1 per file before).
   if (categories.length > 0) {
     const existingCount = fs
       .readdirSync(REFS_DIR)
@@ -440,29 +498,34 @@ async function main() {
       console.log(
         `>>> Phase 1: Crawling ${categories.length} Wikimedia categories (up to ${remaining} images)...`
       );
+      console.log(`    Using combined crawl+resolve (50 files/request instead of 1 file/request)`);
+      console.log("");
 
-      const allFiles = new Set();
+      const allEntries = []; // [{filename, thumbUrl}]
+      const seenFiles = new Set();
       const perCategory = Math.ceil(remaining / categories.length);
 
       for (const cat of categories) {
-        if (allFiles.size >= remaining) break;
+        if (allEntries.length >= remaining) break;
         try {
-          const files = await crawlCategory(cat, perCategory, true);
-          for (const f of files) {
-            if (allFiles.size >= remaining) break;
-            allFiles.add(f);
+          const entries = await crawlCategoryFull(cat, perCategory);
+          for (const e of entries) {
+            if (allEntries.length >= remaining) break;
+            if (!seenFiles.has(e.filename)) {
+              seenFiles.add(e.filename);
+              allEntries.push(e);
+            }
           }
         } catch (e) {
           console.log(`  Error crawling ${cat}: ${e.message}`);
         }
       }
 
-      console.log(`  Found ${allFiles.size} unique files across all categories`);
+      console.log(`  Found ${allEntries.length} unique files with pre-resolved URLs`);
       console.log("");
 
-      if (allFiles.size > 0) {
-        const fileList = [...allFiles];
-        const r = await runBatch(fileList, downloadOneCrawled, "Category");
+      if (allEntries.length > 0) {
+        const r = await runBatch(allEntries, downloadOneCrawled, "Category");
         totalOk += r.ok;
         totalExists += r.exists;
         totalFail += r.fail;
