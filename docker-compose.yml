@@ -16,7 +16,7 @@ services:
     entrypoint: ["./run-loop.sh"]
     command: ["200", "20", "100"]     # batch-size, top-n, max-hall-of-fame
     environment:
-      - TARGET=starrynight
+      - TARGET=paintingwide
     restart: unless-stopped
     volumes:
       - ./hall-of-fame:/app/hall-of-fame

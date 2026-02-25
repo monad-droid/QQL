@@ -15,6 +15,7 @@ const AVAILABLE = {
   yoda: "./yoda.js",
   starrynight: "./starrynight.js",
   wave: "./wave.js",
+  paintingwide: "./paintingwide.js",
 };
 
 function loadTarget() {
