@@ -8,15 +8,15 @@ const path = require("path");
 // features without text alignment. Superior to CLIP for comparing images across
 // different visual domains (abstract generative art ↔ photographs of paintings).
 //
-// Uses the CLS token from DINOv3 ViT-S/16 (384-dim embeddings, 21M params)
+// Uses the CLS token from DINOv3 ViT-L/16 (1024-dim embeddings, 300M params)
 // for global image representation, then cosine similarity to rank candidates.
 //
 // Reference images go in ./references/.
 // Text prompts are NOT used — DINOv3 is vision-only.
 // =============================================================================
 
-const DINO_MODEL = "onnx-community/dinov3-vits16-pretrain-lvd1689m-ONNX";
-const EMBED_DIM = 384; // ViT-S/16 hidden size
+const DINO_MODEL = "onnx-community/dinov3-vitl16-pretrain-lvd1689m-ONNX";
+const EMBED_DIM = 1024; // ViT-L/16 hidden size
 const REFERENCES_DIR = path.join(__dirname, "references");
 
 let _processor = null;

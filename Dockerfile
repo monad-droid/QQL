@@ -39,8 +39,8 @@ RUN chmod +x run.sh run-loop.sh download-references.sh
 # Pre-download DINOv3 model so first run doesn't wait for download
 RUN node -e "import('@huggingface/transformers').then(t => \
   Promise.all([ \
-    t.AutoProcessor.from_pretrained('onnx-community/dinov3-vits16-pretrain-lvd1689m-ONNX'), \
-    t.AutoModel.from_pretrained('onnx-community/dinov3-vits16-pretrain-lvd1689m-ONNX'), \
+    t.AutoProcessor.from_pretrained('onnx-community/dinov3-vitl16-pretrain-lvd1689m-ONNX'), \
+    t.AutoModel.from_pretrained('onnx-community/dinov3-vitl16-pretrain-lvd1689m-ONNX'), \
   ]).then(() => console.log('DINOv3 model cached.')))"
 
 ENTRYPOINT ["./run.sh"]
