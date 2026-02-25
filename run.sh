@@ -55,7 +55,7 @@ echo ""
 
 # Ensure reference images exist for DINO scoring
 mkdir -p references
-REF_COUNT=$(find references -maxdepth 1 -type f \(-iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) | wc -l)
+REF_COUNT=$(find references -maxdepth 1 -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) | wc -l)
 if [ "$REF_COUNT" -eq 0 ]; then
   echo ">>> No reference images found in ./references. Attempting download for TARGET=$TARGET ..."
   ./download-references.sh references || true
