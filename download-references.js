@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 // Download reference images from Wikimedia Commons.
 //
-// Two modes:
-//   1. Manual list — downloads specific files from target.referenceUrls
-//   2. Category crawl — enumerates Wikimedia Commons painting categories
-//      to pull thousands of curated reference images automatically.
+// Each entry in referenceUrls can specify:
+//   - wikimedia: exact Wikimedia Commons filename (fastest, tried first)
+//   - search:    search query to find the painting on Commons (fallback)
 //
 // Usage: node download-references.js [refs_dir]
 //   TARGET env var selects which target config to use (default: pepe)
@@ -106,6 +105,30 @@ async function resolveThumbUrl(filename) {
   const page = Object.values(pages)[0];
   const info = page && page.imageinfo && page.imageinfo[0];
   return (info && info.thumburl) || (info && info.url) || null;
+}
+
+// Search Wikimedia Commons for a painting by title/artist.
+// Returns the best matching filename or null.
+async function searchWikimediaFile(query) {
+  const url =
+    API +
+    "?action=query&list=search" +
+    "&srnamespace=6" + // File: namespace only
+    "&srsearch=" + encodeURIComponent(query + " painting") +
+    "&srlimit=5" +
+    "&format=json";
+  try {
+    const json = await fetchJson(url);
+    const results = (json.query && json.query.search) || [];
+    for (const r of results) {
+      // r.title is like "File:Mona_Lisa.jpg"
+      const filename = r.title.replace(/^File:/, "");
+      if (/\.(jpg|jpeg|png|tif|tiff|webp)$/i.test(filename)) {
+        return filename;
+      }
+    }
+  } catch (_) {}
+  return null;
 }
 
 // Enumerate all files in a Wikimedia Commons category (handles pagination).
@@ -217,12 +240,30 @@ async function downloadOneManual(ref) {
     } catch (_) {}
   }
 
+  // Try exact Wikimedia filename first
   if (ref.wikimedia) {
     try {
       const thumbUrl = await resolveThumbUrl(ref.wikimedia);
-      if (!thumbUrl) return "not_found";
-      await downloadFile(thumbUrl, dest);
-      if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
+      if (thumbUrl) {
+        await downloadFile(thumbUrl, dest);
+        if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
+      }
+    } catch (_) {
+      try { fs.unlinkSync(dest); } catch (_e) {}
+    }
+  }
+
+  // Fall back to search-based resolution
+  if (ref.search) {
+    try {
+      const filename = await searchWikimediaFile(ref.search);
+      if (filename) {
+        const thumbUrl = await resolveThumbUrl(filename);
+        if (thumbUrl) {
+          await downloadFile(thumbUrl, dest);
+          if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return "ok";
+        }
+      }
     } catch (_) {
       try { fs.unlinkSync(dest); } catch (_e) {}
     }
