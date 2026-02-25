@@ -18,10 +18,10 @@ CHUNK=5
 WORKERS=6
 
 echo "============================================"
-echo "  QQL ${TARGET} Hunter (CLIP-powered)"
+echo "  QQL ${TARGET} Hunter (DINO-powered)"
 echo "  Generating: $COUNT images ($WORKERS workers, chunks of $CHUNK)"
 echo "  Keeping top: $TOP_N results"
-echo "  Scoring: Heuristic + CLIP (all images)"
+echo "  Scoring: Heuristic + DINOv3 (all images)"
 echo "============================================"
 echo ""
 
@@ -52,7 +52,16 @@ echo ""
 echo "Generation complete in $((GEN_END - START))s"
 echo ""
 
-# Step 2: Score (heuristic pre-filter + CLIP semantic scoring)
+
+# Ensure reference images exist for DINO scoring
+mkdir -p references
+REF_COUNT=$(find references -maxdepth 1 -type f \(-iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) | wc -l)
+if [ "$REF_COUNT" -eq 0 ]; then
+  echo ">>> No reference images found in ./references. Attempting download for TARGET=$TARGET ..."
+  ./download-references.sh references || true
+fi
+
+# Step 2: Score (heuristic pre-filter + DINOv3 semantic scoring)
 echo ">>> Step 2/2: Scoring and ranking..."
 node --max-old-space-size=4096 score.js "$RENDERS_DIR" "$TOP_N"
 SCORE_END=$(date +%s)
