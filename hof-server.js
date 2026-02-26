@@ -145,23 +145,23 @@ function pageHead(title) {
   .ref-header img { width: 120px; height: 120px; object-fit: cover; border-radius: 6px; border: 1px solid #333; }
   .ref-header .info h2 { font-size: 20px; margin-bottom: 4px; }
   .ref-header .info .meta { color: #888; font-size: 14px; }
-  .entries-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(580px, 1fr)); gap: 16px; }
+  .entries-grid { display: flex; flex-direction: column; gap: 20px; }
   .entry-card { background: #141414; border-radius: 8px; overflow: hidden; border: 1px solid #222; transition: border-color 0.15s; }
   .entry-card:hover { border-color: #4fc3f7; }
   .entry-card .card-header { padding: 10px 14px; font-size: 13px; color: #888; display: flex; justify-content: space-between; align-items: center; }
   .entry-card .card-header .sim-score { color: #4fc3f7; font-weight: 600; font-family: monospace; font-size: 16px; }
-  .comparison { display: flex; gap: 0; }
-  .comparison .side { flex: 1; position: relative; }
-  .comparison .side img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #0a0a0a; display: block; }
+  .comparison { display: flex; gap: 0; align-items: flex-start; }
+  .comparison .side { flex: 1; position: relative; min-width: 0; }
+  .comparison .side img { width: 100%; height: auto; display: block; background: #0a0a0a; }
   .comparison .side .label { position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(0,0,0,0.7); text-align: center; }
-  .comparison .divider { width: 2px; background: #333; }
+  .comparison .divider { width: 2px; background: #333; flex-shrink: 0; align-self: stretch; }
   .label-qql { color: #4fc3f7; }
   .label-ref { color: #ff9800; }
 
   /* Responsive */
   @media (max-width: 700px) {
-    .entries-grid { grid-template-columns: 1fr; }
-    .comparison .side img { aspect-ratio: auto; }
+    .comparison { flex-direction: column; }
+    .comparison .divider { width: auto; height: 2px; }
     .ref-header { flex-direction: column; text-align: center; }
   }
 </style>
