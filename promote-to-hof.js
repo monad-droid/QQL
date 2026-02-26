@@ -78,13 +78,18 @@ function main() {
   let totalHits = 0;
   const refStats = {}; // track per-ref activity for the scoreboard
 
-  for (const s of scores) {
+  for (let si = 0; si < scores.length; si++) {
+    const s = scores[si];
     // Need allSims for per-reference scoring
     const sims = s.allSims;
     if (!sims || sims.length === 0) continue;
 
     const src = s.path || path.join("renders", s.file);
     if (!fs.existsSync(src)) continue;
+
+    let imageHits = 0;
+    let imageBestSim = 0;
+    let imageBestRef = "";
 
     // Try to promote this image into each reference's top-50
     for (const { name: refName, sim } of sims) {
@@ -105,16 +110,18 @@ function main() {
         );
         fs.copyFileSync(src, dest);
         totalHits++;
+        imageHits++;
+
+        if (sim > imageBestSim) {
+          imageBestSim = sim;
+          imageBestRef = dirName;
+        }
 
         if (!refStats[dirName]) {
           refStats[dirName] = { hits: 0, best: 0, pruned: 0 };
         }
         refStats[dirName].hits++;
         refStats[dirName].best = Math.max(refStats[dirName].best, sim);
-
-        console.log(
-          "  \u2605 " + dirName + ": sim=" + sim.toFixed(4) + " -> " + path.basename(dest)
-        );
 
         // Prune: remove the worst if over MAX_PER_REF
         const updated = getRefEntries(refDir);
@@ -127,7 +134,18 @@ function main() {
         }
       }
     }
+
+    // Log one summary line per image instead of per-reference
+    if (imageHits > 0) {
+      process.stdout.write(
+        "\r  Promoting: " + (si + 1) + "/" + scores.length +
+        " | " + s.file.substring(0, 30) +
+        " -> " + imageHits + " refs (best: " + imageBestRef.substring(0, 25) +
+        " " + imageBestSim.toFixed(4) + ")"
+      );
+    }
   }
+  if (totalHits > 0) console.log("");
 
   // Print per-reference scoreboard
   const refDirs = fs
