@@ -3,8 +3,8 @@
 # Uses TARGET env var to decide which references to fetch (default: pepe).
 # Run this once on any machine with internet access.
 #
-# For paintingwide target (~860 images), uses Special:FilePath redirect URLs.
-# Downloads are resilient: failures are logged but don't stop the batch.
+# For paintingwide target (~860 images), uses the smart API-based downloader
+# that queries Wikipedia/Commons APIs to find correct image URLs.
 #
 # Usage:
 #   TARGET=pepe ./download-references.sh
@@ -15,9 +15,35 @@ set -e
 
 TARGET="${TARGET:-pepe}"
 REFS_DIR="${1:-references}"
-PARALLEL="${PARALLEL:-1}"
+PARALLEL="${PARALLEL:-5}"
 mkdir -p "$REFS_DIR"
 
+echo ">>> Downloading reference images for target: $TARGET"
+
+# For paintingwide, use the smart API-based downloader
+if [ "$TARGET" = "paintingwide" ]; then
+  if ! command -v node &>/dev/null; then
+    echo "ERROR: Node.js is required. Install it first."
+    exit 1
+  fi
+
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  # Check if data file exists
+  if [ ! -f "$SCRIPT_DIR/data/art-references.json" ]; then
+    echo "Building art references data..."
+    node "$SCRIPT_DIR/scripts/build-art-references.js"
+  fi
+
+  echo ">>> Using smart API-based downloader (queries Wikipedia/Commons APIs)"
+  echo ">>> Parallel workers: $PARALLEL"
+  echo ""
+
+  PARALLEL="$PARALLEL" node "$SCRIPT_DIR/scripts/download-with-api.js" "$REFS_DIR" --resume
+  exit 0
+fi
+
+# For other targets, use the original approach
 SUCCESS=0
 FAIL=0
 SKIP=0
@@ -68,28 +94,38 @@ download() {
   fi
 }
 
-echo ">>> Downloading reference images for target: $TARGET"
+# Try reading URLs from JSON directly (no canvas dependency)
+if [ -f "data/art-references-minimal.json" ]; then
+  TOTAL=$(node -e "const d = require('./data/art-references-minimal.json'); console.log(d.length);" 2>/dev/null)
+  echo ">>> Total references to fetch: $TOTAL"
 
-# Get total count
-TOTAL=$(node -e "
-  process.env.TARGET = '$TARGET';
-  const { loadTarget } = require('./targets');
-  const t = loadTarget();
-  console.log((t.referenceUrls || []).length);
-" 2>/dev/null)
-echo ">>> Total references to fetch: $TOTAL"
+  node -e "
+    const d = require('./data/art-references-minimal.json');
+    d.forEach(r => console.log(r.url + ' ' + r.name));
+  " 2>/dev/null | while read -r url name; do
+    download "$url" "$REFS_DIR/$name" || true
+  done
+else
+  # Fall back to target loader (requires canvas module)
+  TOTAL=$(node -e "
+    process.env.TARGET = '$TARGET';
+    const { loadTarget } = require('./targets');
+    const t = loadTarget();
+    console.log((t.referenceUrls || []).length);
+  " 2>/dev/null)
+  echo ">>> Total references to fetch: $TOTAL"
 
-# Use Node to read reference URLs from the target config
-node -e "
-  process.env.TARGET = '$TARGET';
-  const { loadTarget } = require('./targets');
-  const t = loadTarget();
-  for (const ref of t.referenceUrls || []) {
-    console.log(ref.url + ' ' + ref.name);
-  }
-" 2>/dev/null | while read -r url name; do
-  download "$url" "$REFS_DIR/$name" || true
-done
+  node -e "
+    process.env.TARGET = '$TARGET';
+    const { loadTarget } = require('./targets');
+    const t = loadTarget();
+    for (const ref of t.referenceUrls || []) {
+      console.log(ref.url + ' ' + ref.name);
+    }
+  " 2>/dev/null | while read -r url name; do
+    download "$url" "$REFS_DIR/$name" || true
+  done
+fi
 
 # Count actual files
 DOWNLOADED=$(ls "$REFS_DIR"/*.jpg "$REFS_DIR"/*.png "$REFS_DIR"/*.JPG "$REFS_DIR"/*.jpeg 2>/dev/null | wc -l)
