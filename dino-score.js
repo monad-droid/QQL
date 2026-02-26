@@ -104,7 +104,7 @@ async function scoreDINO(imagePath) {
 
   for (const { name, embedding } of refEmbs) {
     const sim = cosineSimilarity(candidateEmbedding, embedding);
-    allSims.push({ name, sim: Math.round(sim * 1000) / 1000 });
+    allSims.push({ name, sim: Math.round(sim * 10000) / 10000 });
     if (sim > bestSim) {
       bestSim = sim;
       bestRef = name;
