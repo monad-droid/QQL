@@ -15,9 +15,9 @@ const { createCanvas, loadImage } = require("canvas");
 
 const name = "Painting Wide";
 
-// Empty traits => qql-traits fills all trait fields randomly.
+// Only fix margin to Wide; let qql-traits fill all other traits randomly.
 function traits() {
-  return {};
+  return { margin: "Wide" };
 }
 
 const heuristicThreshold = 0;
