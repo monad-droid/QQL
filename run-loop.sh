@@ -27,6 +27,9 @@ STATS_FILE="$HALL_OF_FAME/_stats.json"
 
 mkdir -p "$HALL_OF_FAME" "$LOG_DIR" results renders
 
+# Read render resolution from generate.js
+RENDER_SIZE=$(grep 'const IMAGE_WIDTH' generate.js | head -1 | grep -oE '[0-9]+' || echo "256")
+
 # Initialize stats
 if [ ! -f "$STATS_FILE" ]; then
   cat > "$STATS_FILE" <<'INIT'
@@ -45,6 +48,7 @@ echo "============================================"
 echo "  QQL ${TARGET} Hunter - CONTINUOUS MODE"
 echo "  Batch size:      $BATCH_SIZE images"
 echo "  Keep per batch:  $TOP_N"
+echo "  Render size:     ${RENDER_SIZE}x${RENDER_SIZE}px"
 echo "  Hall-of-fame:    top 50 per reference painting"
 echo "  Logs:            $LOG_DIR/"
 echo "  Results:         $HALL_OF_FAME/<ref-name>/"
