@@ -20,7 +20,7 @@ const traits = {
   sizeVariety: "Wild",
   structure: "Orbital",
   flowField: "Spiral",
-  margin: "Wide",
+  margin: "None",
   ringSize: "Medium",
   spacing: "Dense",
 };
