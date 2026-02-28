@@ -23,6 +23,11 @@ services:
       - ./results:/app/results
       - ./logs:/app/logs
       - ./references:/app/references
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
