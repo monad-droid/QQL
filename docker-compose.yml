@@ -18,6 +18,11 @@ services:
     environment:
       - TARGET=paintingwide
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     volumes:
       - ./hall-of-fame:/app/hall-of-fame
       - ./results:/app/results

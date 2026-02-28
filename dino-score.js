@@ -55,7 +55,11 @@ function cosineSimilarity(a, b) {
 
 async function encodeImage(imagePath) {
   const { RawImage } = await getTransformers();
-  const rawImage = await RawImage.read(imagePath);
+  let rawImage = await RawImage.read(imagePath);
+  // DINOv3 expects 3-channel RGB; convert RGBA/grayscale images
+  if (rawImage.channels !== 3) {
+    rawImage = rawImage.rgb();
+  }
   const inputs = await _processor(rawImage);
   const output = await _model(inputs);
 
@@ -78,11 +82,17 @@ async function getRefEmbeddings() {
   if (files.length === 0) return _refEmbeddings;
 
   console.log(`  Encoding ${files.length} reference image(s) with DINOv3...`);
-  for (const f of files) {
-    const embedding = await encodeImage(path.join(REFERENCES_DIR, f));
-    _refEmbeddings.push({ name: f, embedding });
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    process.stdout.write(`\r  Encoding references: ${i + 1}/${files.length}...`);
+    try {
+      const embedding = await encodeImage(path.join(REFERENCES_DIR, f));
+      _refEmbeddings.push({ name: f, embedding });
+    } catch (err) {
+      console.error(`\n  Warning: skipping reference ${f}: ${err.message}`);
+    }
   }
-  console.log(`  References encoded: ${files.join(", ")}`);
+  console.log(` Done (${_refEmbeddings.length} encoded).`);
 
   return _refEmbeddings;
 }
@@ -104,7 +114,7 @@ async function scoreDINO(imagePath) {
 
   for (const { name, embedding } of refEmbs) {
     const sim = cosineSimilarity(candidateEmbedding, embedding);
-    allSims.push({ name, sim: Math.round(sim * 1000) / 1000 });
+    allSims.push({ name, sim: Math.round(sim * 10000) / 10000 });
     if (sim > bestSim) {
       bestSim = sim;
       bestRef = name;

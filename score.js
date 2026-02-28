@@ -90,6 +90,7 @@ async function main(args) {
         const dino = await scoreDINO(s.path);
         s.similarity = dino.similarity;
         s.bestRef = dino.bestRef;
+        s.allSims = dino.allSims;
       } catch (err) {
         console.error(`\n  DINOv3 error on ${s.file}: ${err.message}`);
         s.similarity = 0;
