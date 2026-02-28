@@ -99,6 +99,9 @@ while true; do
   echo "  Images/sec: $(echo "scale=2; $BATCH_SIZE / $BATCH_ELAPSED" | bc 2>/dev/null || echo "N/A")"
   echo ""
 
+  # Rotate logs: keep only the 20 most recent batch logs
+  ls -1t "$LOG_DIR"/batch-*.log 2>/dev/null | tail -n +21 | xargs rm -f 2>/dev/null || true
+
   # Brief pause between batches (let system breathe)
   sleep 2
 done
